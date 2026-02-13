@@ -12,6 +12,8 @@ USAGE
 }
 
 min=80
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -50,7 +52,7 @@ if ! awk -v value="$min" 'BEGIN { exit(value ~ /^[0-9]+([.][0-9]+)?$/ ? 0 : 1) }
 fi
 
 if [ "$#" -eq 0 ]; then
-  set -- Sources Tests
+  set -- "$PROJECT_DIR/Sources" "$PROJECT_DIR/Tests"
 fi
 
 tmp_files=$(mktemp)

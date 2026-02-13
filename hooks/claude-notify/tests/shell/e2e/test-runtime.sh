@@ -1,11 +1,12 @@
 #!/bin/sh
 
-ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
-# shellcheck source=hooks/tests/lib/testlib.sh
-. "$ROOT_DIR/hooks/tests/lib/testlib.sh"
+PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
+HOOKS_DIR="$(CDPATH= cd -- "$PROJECT_DIR/.." && pwd)"
+# shellcheck source=hooks/claude-notify/tests/shell/lib/testlib.sh
+. "$PROJECT_DIR/tests/shell/lib/testlib.sh"
 
-NOTIFY="$ROOT_DIR/hooks/claude-notify.app/Contents/MacOS/claude-notify"
-SCRIPT="$ROOT_DIR/hooks/notify.sh"
+NOTIFY="$HOOKS_DIR/claude-notify.app/Contents/MacOS/claude-notify"
+SCRIPT="$HOOKS_DIR/notify.sh"
 PID_FILE="/tmp/claude-notify.pid.$$"
 export CLAUDE_NOTIFY_PID_FILE="$PID_FILE"
 
