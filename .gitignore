@@ -1,0 +1,6 @@
+# macOS
+.DS_Store
+
+# Build artifacts
+hooks/claude-notify.app/Contents/MacOS/
+hooks/claude-notify.app/Contents/_CodeSignature/

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs ls:*)",
+      "Bash(lipo:*)",
+      "WebSearch",
+      "Bash(/Users/gwk/.claude/hooks/test-claude-notify.sh:*)"
+    ]
+  }
+}
