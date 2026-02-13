@@ -265,7 +265,7 @@ func removePid() {
 func installSignalHandlers() {
   let handler: @convention(c) (Int32) -> Void = { _ in
     removePid()
-    exit(0)
+    _exit(0)
   }
   signal(SIGTERM, handler)
   signal(SIGINT, handler)
