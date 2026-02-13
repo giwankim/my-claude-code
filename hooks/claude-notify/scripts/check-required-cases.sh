@@ -33,7 +33,7 @@ required=0
 missing=0
 
 while IFS= read -r line || [ -n "$line" ]; do
-  trimmed=$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  trimmed=$(printf '%s' "$line" | sed 's/\r//g;s/^[[:space:]]*//;s/[[:space:]]*$//')
 
   case "$trimmed" in
     ''|'#'*)

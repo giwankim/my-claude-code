@@ -43,18 +43,18 @@ if [ -n "$TMUX" ]; then
     case "$TMUX_INFO" in
       *"|"*"|"*"|"*)
         SESSION=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
-        WINDOW=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
+        WINDOW_INDEX=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
         WINDOW_NAME=${TMUX_INFO%%|*}
         CLIENT=${TMUX_INFO#*|}
         if [ -n "$CLIENT" ] && [ -n "$TMUX_PANE" ] && [ -n "$SOCKET" ]; then
           notify_run \
             -title "Claude Code" \
-            -subtitle "$SESSION:$WINDOW_NAME" \
+            -subtitle "$SESSION:$WINDOW_INDEX.$WINDOW_NAME" \
             -message "$MESSAGE" \
             -sound default \
             -group "claude-code" \
             -activate "$ACTIVATE_BUNDLE_ID" \
-            -execute "'$TMUX_BIN' -S $SOCKET switch-client -c '$CLIENT' -t '$TMUX_PANE'" &
+            -execute "'$TMUX_BIN' -S '$SOCKET' switch-client -c '$CLIENT' -t '$TMUX_PANE'" &
         else
           printf '%s\n' "Warning: tmux context incomplete; sending notification without execute action" >&2
           notify_run \

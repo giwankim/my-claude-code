@@ -81,8 +81,8 @@ if [ ! -s "$tmp_files" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC2046
 set +e
+# shellcheck disable=SC2046
 awk -v min="$min" '
   BEGIN {
     declarationPattern = "^((public|internal|private|fileprivate|open|final|static|class|override|required|convenience|mutating|nonmutating|@preconcurrency)[[:space:]]+)*(enum|struct|class|protocol|func|init)([[:space:](]|$)"
@@ -105,7 +105,7 @@ awk -v min="$min" '
     rawLine = $0
     trimmedLine = trim($0)
 
-    if (rawLine ~ /^[ ]{0,2}/ && trimmedLine ~ declarationPattern) {
+    if (rawLine !~ /^[ ]{3,}/ && trimmedLine ~ declarationPattern) {
       total += 1
       if (previousNonEmpty ~ /^[[:space:]]*\/\/\//) {
         documented += 1

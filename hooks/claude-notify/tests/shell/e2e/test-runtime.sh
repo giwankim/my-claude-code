@@ -81,9 +81,22 @@ fi
 wait "$timeout_pid" 2>/dev/null
 
 case_start "E004" "PID file removed after timeout"
-if wait_for_pid_removed "$PID_FILE" 30; then
+rm -f "$PID_FILE"
+"$NOTIFY" -message "timeout-cleanup-test" -group "test-timeout-cleanup" -timeout 2 &
+cleanup_pid=$!
+if ! wait_for_pid_file "$PID_FILE" 50; then
+  fail "E004" "PID file not created for timeout cleanup test"
+  kill "$cleanup_pid" 2>/dev/null
+  wait "$cleanup_pid" 2>/dev/null
+elif ! wait_for_process_exit "$cleanup_pid" 60; then
+  fail "E004" "process still running after timeout"
+  kill "$cleanup_pid" 2>/dev/null
+  wait "$cleanup_pid" 2>/dev/null
+elif wait_for_pid_removed "$PID_FILE" 30; then
+  wait "$cleanup_pid" 2>/dev/null
   pass "E004" "PID file removed after timeout"
 else
+  wait "$cleanup_pid" 2>/dev/null
   fail "E004" "PID file still exists after timeout"
 fi
 

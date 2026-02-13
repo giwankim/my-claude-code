@@ -103,7 +103,7 @@ final class UnitUtilityTests: XCTestCase {
   func test_U016_buildRelaunchArgumentsRemovesInternalFlagsAndAddsOrigin() {
     let rewritten = buildRelaunchArguments(
       from: [
-        "-message", "x",
+        "-message", "-spoofed-run",
         "-spoofed-run",
         "-origin-exec", "/tmp/old",
         "-fallback-run",
@@ -113,7 +113,7 @@ final class UnitUtilityTests: XCTestCase {
     )
 
     XCTAssertEqual(rewritten, [
-      "-message", "x",
+      "-message", "-spoofed-run",
       "-sender-mode", "auto",
       "-spoofed-run",
       "-origin-exec", "/tmp/current"

@@ -327,9 +327,16 @@ func senderSpoofEnabled(args: Args) -> Bool {
 
 func safePathComponent(_ value: String) -> String {
   let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
-  let converted = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
+  let withoutSeparators = value
+    .replacingOccurrences(of: "/", with: "_")
+    .replacingOccurrences(of: "\\", with: "_")
+  let converted = withoutSeparators.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
   let sanitized = String(converted)
-  return sanitized.isEmpty ? "default" : sanitized
+  guard !sanitized.isEmpty else { return "default" }
+  if sanitized == "." || sanitized == ".." || sanitized.contains("..") {
+    return "default"
+  }
+  return sanitized
 }
 
 func safeBundleIDComponent(_ value: String) -> String {

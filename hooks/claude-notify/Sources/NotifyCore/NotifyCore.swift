@@ -305,10 +305,21 @@ public func buildRelaunchArguments(from argv: [String], originExecutablePath: St
       index += 1
       continue
     }
-    if flag == "-origin-exec" {
+    if flagsWithValues.contains(flag) {
+      if flag == "-origin-exec" {
+        if index + 1 < argv.count {
+          index += 2
+        } else {
+          index += 1
+        }
+        continue
+      }
       if index + 1 < argv.count {
+        out.append(flag)
+        out.append(argv[index + 1])
         index += 2
       } else {
+        out.append(flag)
         index += 1
       }
       continue
