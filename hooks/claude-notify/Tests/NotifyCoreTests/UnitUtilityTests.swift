@@ -16,6 +16,10 @@ final class UnitUtilityTests: XCTestCase {
     args.senderAppPath = nil
     XCTAssertFalse(senderSpoofEnabled(args: args))
 
+    args.senderAppPath = "/Applications/FakeSender.app"
+    XCTAssertTrue(senderSpoofEnabled(args: args))
+
+    args.senderAppPath = nil
     args.senderBundleID = "com.example.sender"
     XCTAssertTrue(senderSpoofEnabled(args: args))
   }
