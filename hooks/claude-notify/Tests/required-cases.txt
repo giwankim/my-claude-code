@@ -25,6 +25,8 @@ I002
 I003
 I004
 I005
+# I006-I100 intentionally reserved: Swift integration XCTest cases use I001-I005,
+# and shell integration scenarios start at I101.
 I101
 I102
 I103

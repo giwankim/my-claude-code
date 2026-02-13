@@ -55,13 +55,13 @@ else
   fail "I101" "binary not found or not executable at $NOTIFY"
 fi
 
-case_start "I102" "-help exits 1 and prints usage"
+case_start "I102" "-help exits 0 and prints usage"
 err=$("$NOTIFY" -help 2>&1 >/dev/null)
 rc=$?
-if [ "$rc" -eq 1 ]; then
-  pass "I102" "-help exits 1"
+if [ "$rc" -eq 0 ]; then
+  pass "I102" "-help exits 0"
 else
-  fail "I102" "-help exited $rc (expected 1)"
+  fail "I102" "-help exited $rc (expected 0)"
 fi
 if echo "$err" | grep -q "Usage:"; then
   pass "I102" "-help prints usage"

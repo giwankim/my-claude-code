@@ -1,10 +1,13 @@
 # Root compatibility Makefile delegating claude-notify operations to hooks/claude-notify.
 
 .PHONY: install diff build test test-fast test-unit test-integration test-e2e \
-	check-cases-unit check-cases-integration check-cases-e2e check-docstrings
+	check-cases-unit check-cases-integration check-cases-e2e check-docstrings \
+	all clean
 
 PROJECT_DIR := hooks/claude-notify
 SUB_MAKE := $(MAKE) -C $(PROJECT_DIR)
+
+all: build
 
 install:
 	rsync -a --delete \
@@ -22,6 +25,9 @@ diff:
 
 build:
 	$(SUB_MAKE) build
+
+clean:
+	$(SUB_MAKE) clean
 
 check-cases-unit:
 	$(SUB_MAKE) check-cases-unit

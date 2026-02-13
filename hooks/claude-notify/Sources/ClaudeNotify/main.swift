@@ -56,7 +56,7 @@ func parseArgs() -> NotifyArgs {
     switch parseError {
     case .helpRequested:
       usage()
-      exit(1)
+      exit(0)
     case .missingMessage:
       FileHandle.standardError.write(Data("Error: -message is required\n".utf8))
       usage()
@@ -168,6 +168,17 @@ func processExecutableName(pid: pid_t) -> String? {
   return name.isEmpty ? nil : name
 }
 
+/// Waits for a PID to disappear from the process table.
+func waitForProcessExit(_ pid: pid_t, attempts: Int = 20, intervalUsec: useconds_t = 100_000) -> Bool {
+  for _ in 0..<attempts {
+    if kill(pid, 0) != 0 {
+      return errno == ESRCH
+    }
+    usleep(intervalUsec)
+  }
+  return kill(pid, 0) != 0 && errno == ESRCH
+}
+
 /// Terminates a prior owned runtime process referenced by the PID file.
 func killPrevious() {
   guard let pid = readPidFromFile() else { return }
@@ -186,8 +197,16 @@ func killPrevious() {
     return
   }
 
-  kill(pid, SIGTERM)
-  usleep(100_000)
+  guard kill(pid, SIGTERM) == 0 else {
+    warning("failed to signal prior process \(pid): \(String(cString: strerror(errno)))")
+    return
+  }
+
+  if waitForProcessExit(pid) {
+    removePid()
+  } else {
+    warning("prior process \(pid) is still running after SIGTERM; keeping existing pid file")
+  }
 }
 
 /// Creates the runtime PID file with race-resistant filesystem flags.

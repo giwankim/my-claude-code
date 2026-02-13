@@ -1,22 +1,30 @@
 # Makefile for claude-notify subproject (canonical build/test logic)
 
 .PHONY: build test test-fast test-unit test-integration test-e2e \
-	check-cases-unit check-cases-integration check-cases-e2e check-docstrings
+	check-cases-unit check-cases-integration check-cases-e2e check-docstrings \
+	all clean
+
+all: build
+
+DEVELOPER_DIR ?= $(if $(wildcard /Applications/Xcode.app/Contents/Developer),/Applications/Xcode.app/Contents/Developer,$(shell xcode-select -p))
 
 SWIFT_ENV=CLANG_MODULE_CACHE_PATH=$(CURDIR)/.build/clang-module-cache \
 	SWIFTPM_MODULECACHE_OVERRIDE=$(CURDIR)/.build/module-cache \
 	XDG_CACHE_HOME=$(CURDIR)/.build/.cache \
 	HOME=$(CURDIR)/.build/home \
-	DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+	DEVELOPER_DIR=$(DEVELOPER_DIR)
 
 HOOKS_DIR := $(abspath ..)
 
 build:
 	$(SWIFT_ENV) swift build --disable-sandbox -c release --product claude-notify
 	mkdir -p $(HOOKS_DIR)/claude-notify.app/Contents/MacOS
-	BIN_PATH=$$($(SWIFT_ENV) swift build --disable-sandbox -c release --show-bin-path); \
-		cp "$$BIN_PATH/claude-notify" $(HOOKS_DIR)/claude-notify.app/Contents/MacOS/claude-notify
+	cp .build/release/claude-notify $(HOOKS_DIR)/claude-notify.app/Contents/MacOS/claude-notify
 	codesign -s - $(HOOKS_DIR)/claude-notify.app
+
+clean:
+	rm -rf .build
+	rm -f $(HOOKS_DIR)/claude-notify.app/Contents/MacOS/claude-notify
 
 check-cases-unit:
 	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests Tests/required-cases.txt
