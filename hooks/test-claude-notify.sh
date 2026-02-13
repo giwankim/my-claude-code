@@ -603,6 +603,116 @@ else
 fi
 rm -rf "$TMP_DIR"
 
+# ---- Test 30: notify.sh default sender mode is off ----
+printf "Test 30: notify.sh default sender mode is off\n"
+TMP_DIR="/tmp/claude-notify-test-default-mode.$$"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+cat > "$FAKE_NOTIFY" <<'EOF'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
+  i=$((i+1))
+done
+exit 0
+EOF
+chmod +x "$FAKE_NOTIFY"
+TMUX="" NOTIFY_SENDER_MODE= NOTIFY_ALLOW_NONISOLATED_RETRY= \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "default sender mode test" 2>/dev/null
+rc=$?
+i=0
+while [ "$i" -lt 20 ] && [ ! -f "$ARGS_LOG" ]; do
+  sleep 0.1
+  i=$((i+1))
+done
+if [ "$rc" -eq 0 ]; then
+  pass "notify.sh default sender mode probe exits 0"
+else
+  fail "notify.sh default sender mode probe exited $rc"
+fi
+if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=off$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+  pass "notify.sh forwards -sender-mode off by default"
+else
+  fail "notify.sh did not forward default -sender-mode off"
+fi
+rm -rf "$TMP_DIR"
+
+# ---- Test 31: notify.sh sender mode env override auto ----
+printf "Test 31: notify.sh sender mode env override auto\n"
+TMP_DIR="/tmp/claude-notify-test-auto-mode.$$"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+cat > "$FAKE_NOTIFY" <<'EOF'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
+  i=$((i+1))
+done
+exit 0
+EOF
+chmod +x "$FAKE_NOTIFY"
+TMUX="" NOTIFY_SENDER_MODE=auto NOTIFY_ALLOW_NONISOLATED_RETRY= \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "sender mode auto override test" 2>/dev/null
+rc=$?
+i=0
+while [ "$i" -lt 20 ] && [ ! -f "$ARGS_LOG" ]; do
+  sleep 0.1
+  i=$((i+1))
+done
+if [ "$rc" -eq 0 ]; then
+  pass "notify.sh sender mode auto override probe exits 0"
+else
+  fail "notify.sh sender mode auto override probe exited $rc"
+fi
+if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=auto$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+  pass "notify.sh forwards -sender-mode auto when overridden"
+else
+  fail "notify.sh did not forward overridden -sender-mode auto"
+fi
+rm -rf "$TMP_DIR"
+
+# ---- Test 32: notify.sh default non-isolated retry env is 0 ----
+printf "Test 32: notify.sh default non-isolated retry env\n"
+TMP_DIR="/tmp/claude-notify-test-default-retry.$$"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+ENV_LOG="$TMP_DIR/notify-env.log"
+cat > "$FAKE_NOTIFY" <<'EOF'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
+  i=$((i+1))
+done
+printf '%s\n' "$CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY" > "$NOTIFY_ENV_LOG"
+exit 0
+EOF
+chmod +x "$FAKE_NOTIFY"
+TMUX="" NOTIFY_SENDER_MODE= NOTIFY_ALLOW_NONISOLATED_RETRY= \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_ENV_LOG="$ENV_LOG" "$SCRIPT" "default retry env test" 2>/dev/null
+rc=$?
+i=0
+while [ "$i" -lt 20 ] && [ ! -f "$ENV_LOG" ]; do
+  sleep 0.1
+  i=$((i+1))
+done
+if [ "$rc" -eq 0 ]; then
+  pass "notify.sh default retry env probe exits 0"
+else
+  fail "notify.sh default retry env probe exited $rc"
+fi
+if [ -f "$ENV_LOG" ] && grep -qx "0" "$ENV_LOG"; then
+  pass "notify.sh exports CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=0 by default"
+else
+  fail "notify.sh did not export default CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=0"
+fi
+rm -rf "$TMP_DIR"
+
 # ---- Summary ----
 printf "\nResults: %d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1

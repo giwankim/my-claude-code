@@ -1,14 +1,15 @@
 #!/bin/sh
 
 NOTIFY="${NOTIFY_BIN:-$(dirname "$0")/claude-notify.app/Contents/MacOS/claude-notify}"
-SENDER_MODE="${NOTIFY_SENDER_MODE:-auto}"
+# Default sender spoofing off so click actions reliably focus tmux instead of spoofed apps.
+SENDER_MODE="${NOTIFY_SENDER_MODE:-off}"
 SENDER_BUNDLE_ID="${NOTIFY_SENDER_BUNDLE_ID:-com.anthropic.claudefordesktop}"
 SENDER_APP_PATH="${NOTIFY_SENDER_APP_PATH:-}"
 NOTIFY_TIMEOUT="${NOTIFY_TIMEOUT:-90}"
 ACTIVATE_BUNDLE_ID="${NOTIFY_ACTIVATE_BUNDLE_ID:-com.mitchellh.ghostty}"
 TMUX_BIN="${NOTIFY_TMUX_BIN:-$(command -v tmux 2>/dev/null || printf '%s' /opt/homebrew/bin/tmux)}"
 NOTIFY_ISOLATE_HELPER_BUNDLE_ID="${NOTIFY_ISOLATE_HELPER_BUNDLE_ID:-1}"
-NOTIFY_ALLOW_NONISOLATED_RETRY="${NOTIFY_ALLOW_NONISOLATED_RETRY:-1}"
+NOTIFY_ALLOW_NONISOLATED_RETRY="${NOTIFY_ALLOW_NONISOLATED_RETRY:-0}"
 
 # Read message from $1 (manual) or stdin JSON (Claude Code hook)
 if [ -n "$1" ]; then
