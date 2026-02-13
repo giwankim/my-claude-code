@@ -1,27 +1,26 @@
-# Root compatibility Makefile delegating claude-notify operations to hooks/claude-notify.
+# Root orchestrator Makefile for local hook projects.
 
 .PHONY: install diff build test test-fast test-unit test-integration test-e2e \
 	check-cases-unit check-cases-integration check-cases-e2e check-docstrings \
 	all clean
 
-PROJECT_DIR := hooks/claude-notify
-SUB_MAKE := $(MAKE) -C $(PROJECT_DIR)
+HOOKS_DIR := hooks
+HOOKS := claude-notify
+CLAUDE_NOTIFY_DIR := $(HOOKS_DIR)/$(firstword $(HOOKS))
+SUB_MAKE := $(MAKE) -C $(CLAUDE_NOTIFY_DIR)
+INSTALL_HOOK_DIR := ~/.claude/hooks/claude-notify
 
 all: build
 
 install:
 	rsync -a --delete \
-		--include='claude-notify.app/' \
-		--include='claude-notify.app/**' \
-		--include='notify.sh' \
-		--include='test-claude-notify.sh' \
-		--exclude='*' \
-		hooks/ ~/.claude/hooks/
+		--exclude='.build/' \
+		"$(CLAUDE_NOTIFY_DIR)/" "$(INSTALL_HOOK_DIR)/"
 
 diff:
-	diff -q hooks/notify.sh ~/.claude/hooks/notify.sh
-	diff -q hooks/test-claude-notify.sh ~/.claude/hooks/test-claude-notify.sh
-	diff -rq hooks/claude-notify.app ~/.claude/hooks/claude-notify.app
+	diff -q "$(CLAUDE_NOTIFY_DIR)/notify.sh" "$(INSTALL_HOOK_DIR)/notify.sh"
+	diff -q "$(CLAUDE_NOTIFY_DIR)/test-claude-notify.sh" "$(INSTALL_HOOK_DIR)/test-claude-notify.sh"
+	diff -rq "$(CLAUDE_NOTIFY_DIR)/claude-notify.app" "$(INSTALL_HOOK_DIR)/claude-notify.app"
 
 build:
 	$(SUB_MAKE) build
