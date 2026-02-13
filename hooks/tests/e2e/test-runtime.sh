@@ -6,7 +6,8 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
 
 NOTIFY="$ROOT_DIR/hooks/claude-notify.app/Contents/MacOS/claude-notify"
 SCRIPT="$ROOT_DIR/hooks/notify.sh"
-PID_FILE="/tmp/claude-notify.pid"
+PID_FILE="/tmp/claude-notify.pid.$$"
+export CLAUDE_NOTIFY_PID_FILE="$PID_FILE"
 
 cleanup() {
   if [ -f "$PID_FILE" ]; then
@@ -21,6 +22,7 @@ case_start "E001" "PID file written on launch"
 rm -f "$PID_FILE"
 "$NOTIFY" -message "pid-test" -group "test-pid" -timeout 5 &
 bg_pid=$!
+file_pid=""
 if wait_for_pid_file "$PID_FILE" 50; then
   file_pid=$(cat "$PID_FILE")
   if kill -0 "$file_pid" 2>/dev/null; then
@@ -31,9 +33,11 @@ if wait_for_pid_file "$PID_FILE" 50; then
 else
   fail "E001" "PID file not created"
 fi
-kill "$file_pid" 2>/dev/null
-kill "$bg_pid" 2>/dev/null
-wait "$bg_pid" 2>/dev/null
+if [ -n "$file_pid" ] && [ "$file_pid" -gt 0 ] 2>/dev/null; then
+  kill "$file_pid" 2>/dev/null
+  kill "$bg_pid" 2>/dev/null
+  wait "$bg_pid" 2>/dev/null
+fi
 sleep 0.2
 
 case_start "E002" "New instance kills previous instance"

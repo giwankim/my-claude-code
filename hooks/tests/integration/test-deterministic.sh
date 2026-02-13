@@ -6,14 +6,44 @@ ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
 
 NOTIFY="$ROOT_DIR/hooks/claude-notify.app/Contents/MacOS/claude-notify"
 SCRIPT="$ROOT_DIR/hooks/notify.sh"
-PID_FILE="/tmp/claude-notify.pid"
+PID_FILE="/tmp/claude-notify.pid.$$"
+RELAUNCH_MARKER="/tmp/claude-notify-relaunch-marker.$$"
+TEST_TMP_DIRS=""
+EXPECTED_NOTIFY_NAME=$(basename "$NOTIFY")
+export CLAUDE_NOTIFY_PID_FILE="$PID_FILE"
+
+register_tmp_dir() {
+  dir="$1"
+  TEST_TMP_DIRS="$TEST_TMP_DIRS $dir"
+}
+
+is_expected_notify_pid() {
+  pid="$1"
+  case "$pid" in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+  esac
+  [ "$pid" -gt 0 ] 2>/dev/null || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  proc=$(ps -p "$pid" -o comm= 2>/dev/null | awk 'NR==1 {print $1}')
+  [ "$proc" = "$EXPECTED_NOTIFY_NAME" ]
+}
+
+kill_pid_from_file() {
+  pid_file="$1"
+  [ -f "$pid_file" ] || return 1
+  pid=$(cat "$pid_file" 2>/dev/null)
+  is_expected_notify_pid "$pid" || return 1
+  kill "$pid" 2>/dev/null
+}
 
 cleanup() {
-  if [ -f "$PID_FILE" ]; then
-    pid=$(cat "$PID_FILE" 2>/dev/null)
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null
-    rm -f "$PID_FILE"
-  fi
+  kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
+  rm -f "$PID_FILE" "$RELAUNCH_MARKER"
+  for dir in $TEST_TMP_DIRS; do
+    rm -rf "$dir"
+  done
 }
 trap cleanup EXIT
 
@@ -117,7 +147,7 @@ if [ -x "$SCRIPT" ] || [ -f "$SCRIPT" ]; then
   rc=$?
   sleep 1
   if [ -f "$PID_FILE" ]; then
-    kill "$(cat "$PID_FILE")" 2>/dev/null
+    kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
     sleep 0.5
   fi
   if [ "$rc" -eq 0 ]; then
@@ -153,7 +183,7 @@ else
 fi
 
 case_start "I113" "Spoof relaunch path uses app launch"
-MARKER="/tmp/claude-notify-relaunch-marker.$$"
+MARKER="$RELAUNCH_MARKER"
 rm -f "$MARKER"
 SELF_APP="$ROOT_DIR/hooks/claude-notify.app"
 CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH=1 CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER="$MARKER" \
@@ -218,7 +248,7 @@ err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_
 rc=$?
 sleep 1
 if [ -f "$PID_FILE" ]; then
-  kill "$(cat "$PID_FILE")" 2>/dev/null
+  kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
   sleep 0.5
 fi
 if [ "$rc" -eq 0 ]; then
@@ -243,7 +273,7 @@ err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_
 rc=$?
 sleep 1
 if [ -f "$PID_FILE" ]; then
-  kill "$(cat "$PID_FILE")" 2>/dev/null
+  kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
   sleep 0.5
 fi
 if [ "$rc" -eq 0 ]; then
@@ -259,6 +289,7 @@ fi
 
 case_start "I117" "notify.sh tmux binary override"
 TMP_DIR="/tmp/claude-notify-test.$$"
+register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
@@ -306,6 +337,7 @@ rm -rf "$TMP_DIR"
 
 case_start "I118" "notify.sh tmux metadata failure omits execute action"
 TMP_DIR="/tmp/claude-notify-test-fail.$$"
+register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
@@ -349,6 +381,7 @@ rm -rf "$TMP_DIR"
 
 case_start "I119" "notify.sh default sender mode is off"
 TMP_DIR="/tmp/claude-notify-test-default-mode.$$"
+register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
@@ -380,6 +413,7 @@ rm -rf "$TMP_DIR"
 
 case_start "I120" "notify.sh sender mode env override auto"
 TMP_DIR="/tmp/claude-notify-test-auto-mode.$$"
+register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
@@ -411,6 +445,7 @@ rm -rf "$TMP_DIR"
 
 case_start "I121" "notify.sh default non-isolated retry env is 0"
 TMP_DIR="/tmp/claude-notify-test-default-retry.$$"
+register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"

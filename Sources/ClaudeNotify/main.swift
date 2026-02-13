@@ -71,7 +71,55 @@ func parseArgs() -> NotifyArgs {
 
 // MARK: - PID file management
 
-let pidPath = "/tmp/claude-notify.pid"
+func defaultPidPath() -> String {
+  let fm = FileManager.default
+  let baseDirectory: URL
+  if let tmpDir = normalizeOption(ProcessInfo.processInfo.environment["TMPDIR"]) {
+    baseDirectory = URL(fileURLWithPath: tmpDir, isDirectory: true)
+  } else if let cacheDir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
+    baseDirectory = cacheDir
+  } else {
+    baseDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+  }
+
+  return baseDirectory
+    .appendingPathComponent("claude-notify", isDirectory: true)
+    .appendingPathComponent("claude-notify.pid")
+    .path
+}
+
+let pidPath = normalizeOption(ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_PID_FILE"])
+  ?? defaultPidPath()
+
+func ensurePidDirectoryExists() -> Bool {
+  let dir = URL(fileURLWithPath: pidPath).deletingLastPathComponent()
+  do {
+    try FileManager.default.createDirectory(
+      at: dir,
+      withIntermediateDirectories: true,
+      attributes: [.posixPermissions: 0o700]
+    )
+    return true
+  } catch {
+    warning("failed to create pid directory at \(dir.path): \(error.localizedDescription)")
+    return false
+  }
+}
+
+func readPidFromFile() -> pid_t? {
+  let fd = open(pidPath, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+  guard fd >= 0 else { return nil }
+  defer { close(fd) }
+
+  var buffer = [UInt8](repeating: 0, count: 64)
+  let size = read(fd, &buffer, buffer.count)
+  guard size > 0 else { return nil }
+
+  let text = String(decoding: buffer.prefix(Int(size)), as: UTF8.self)
+  let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard let pid = pid_t(trimmed), pid > 0 else { return nil }
+  return pid
+}
 
 func currentExecutablePath() -> String? {
   if let executablePath = Bundle.main.executablePath {
@@ -109,9 +157,7 @@ func processExecutableName(pid: pid_t) -> String? {
 }
 
 func killPrevious() {
-  guard let data = try? String(contentsOfFile: pidPath, encoding: .utf8),
-        let pid = pid_t(data.trimmingCharacters(in: .whitespacesAndNewlines)),
-        pid > 0 else { return }
+  guard let pid = readPidFromFile() else { return }
 
   guard kill(pid, 0) == 0 else {
     if errno == ESRCH {
@@ -132,11 +178,53 @@ func killPrevious() {
 }
 
 func writePid() {
-  try? "\(getpid())".write(toFile: pidPath, atomically: true, encoding: .utf8)
+  guard ensurePidDirectoryExists() else { return }
+
+  if let existingPID = readPidFromFile() {
+    if kill(existingPID, 0) != 0 && errno == ESRCH {
+      _ = unlink(pidPath)
+    }
+  }
+
+  let fd = open(pidPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR)
+  guard fd >= 0 else {
+    if errno == EEXIST {
+      warning("pid file already exists at \(pidPath)")
+    } else {
+      warning("failed to create pid file at \(pidPath): \(String(cString: strerror(errno)))")
+    }
+    return
+  }
+  defer { close(fd) }
+
+  let payload = Data("\(getpid())\n".utf8)
+  let wroteAll = payload.withUnsafeBytes { rawBuffer -> Bool in
+    guard let base = rawBuffer.baseAddress else { return false }
+    var remaining = rawBuffer.count
+    var offset = 0
+    while remaining > 0 {
+      let written = write(fd, base.advanced(by: offset), remaining)
+      if written < 0 {
+        if errno == EINTR { continue }
+        return false
+      }
+      if written == 0 {
+        return false
+      }
+      remaining -= written
+      offset += written
+    }
+    return true
+  }
+
+  if !wroteAll {
+    warning("failed to write pid file at \(pidPath)")
+    removePid()
+  }
 }
 
 func removePid() {
-  try? FileManager.default.removeItem(atPath: pidPath)
+  _ = unlink(pidPath)
 }
 
 func installSignalHandlers() {

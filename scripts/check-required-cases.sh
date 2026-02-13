@@ -9,7 +9,7 @@ fi
 
 SUITE="$1"
 shift
-MANIFEST="tests/required-cases.txt"
+MANIFEST="Tests/required-cases.txt"
 
 if [ ! -f "$MANIFEST" ]; then
   echo "Manifest not found: $MANIFEST" >&2

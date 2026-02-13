@@ -23,13 +23,13 @@ build:
 	codesign -s - hooks/claude-notify.app
 
 check-cases-unit:
-	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests tests/required-cases.txt
+	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests Tests/required-cases.txt
 
 check-cases-integration:
-	./scripts/check-required-cases.sh integration Sources/NotifyCore Tests/NotifyCoreTests hooks/tests/integration tests/required-cases.txt
+	./scripts/check-required-cases.sh integration Sources/NotifyCore Tests/NotifyCoreTests hooks/tests/integration Tests/required-cases.txt
 
 check-cases-e2e:
-	./scripts/check-required-cases.sh e2e hooks/tests/e2e tests/required-cases.txt
+	./scripts/check-required-cases.sh e2e hooks/tests/e2e Tests/required-cases.txt
 
 test-unit: check-cases-unit
 	$(SWIFT_ENV) swift test --disable-sandbox --filter Unit
