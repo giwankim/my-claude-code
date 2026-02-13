@@ -82,8 +82,7 @@ if [ ! -s "$tmp_files" ]; then
 fi
 
 set +e
-# shellcheck disable=SC2046
-awk -v min="$min" '
+tr '\n' '\0' < "$tmp_files" | xargs -0 awk -v min="$min" '
   BEGIN {
     declarationPattern = "^((public|internal|private|fileprivate|open|final|static|class|override|required|convenience|mutating|nonmutating|@preconcurrency)[[:space:]]+)*(enum|struct|class|protocol|func|init)([[:space:](]|$)"
     total = 0
@@ -141,7 +140,7 @@ awk -v min="$min" '
       exit 2
     }
   }
-' $(cat "$tmp_files")
+'
 status=$?
 set -e
 if [ "$status" -eq 2 ]; then
