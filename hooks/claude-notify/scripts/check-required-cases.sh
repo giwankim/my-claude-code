@@ -9,7 +9,9 @@ fi
 
 SUITE="$1"
 shift
-MANIFEST="Tests/required-cases.txt"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+MANIFEST="$PROJECT_DIR/Tests/required-cases.txt"
 
 if [ ! -f "$MANIFEST" ]; then
   echo "Manifest not found: $MANIFEST" >&2

@@ -1,11 +1,12 @@
 #!/bin/sh
 
-ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
-# shellcheck source=hooks/tests/lib/testlib.sh
-. "$ROOT_DIR/hooks/tests/lib/testlib.sh"
+PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
+HOOKS_DIR="$(CDPATH= cd -- "$PROJECT_DIR/.." && pwd)"
+# shellcheck source=hooks/claude-notify/tests/shell/lib/testlib.sh
+. "$PROJECT_DIR/tests/shell/lib/testlib.sh"
 
-NOTIFY="$ROOT_DIR/hooks/claude-notify.app/Contents/MacOS/claude-notify"
-SCRIPT="$ROOT_DIR/hooks/notify.sh"
+NOTIFY="$HOOKS_DIR/claude-notify.app/Contents/MacOS/claude-notify"
+SCRIPT="$HOOKS_DIR/notify.sh"
 PID_FILE="/tmp/claude-notify.pid.$$"
 RELAUNCH_MARKER="/tmp/claude-notify-relaunch-marker.$$"
 TEST_TMP_DIRS=""
@@ -185,7 +186,7 @@ fi
 case_start "I113" "Spoof relaunch path uses app launch"
 MARKER="$RELAUNCH_MARKER"
 rm -f "$MARKER"
-SELF_APP="$ROOT_DIR/hooks/claude-notify.app"
+SELF_APP="$HOOKS_DIR/claude-notify.app"
 CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH=1 CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER="$MARKER" \
   "$NOTIFY" -message "sender-relaunch-marker" -sender-mode auto -sender-app-path "$SELF_APP" -timeout 1 2>/dev/null
 rc=$?
@@ -203,7 +204,7 @@ rm -f "$MARKER"
 
 case_start "I114" "Spoof helper uses isolated signing identifier"
 SPOOF_ID="com.example.notifyspoof.test"
-SELF_APP="$ROOT_DIR/hooks/claude-notify.app"
+SELF_APP="$HOOKS_DIR/claude-notify.app"
 CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH=1 \
   CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID=1 \
   "$NOTIFY" -message "sender-signing-id" -sender-mode auto -sender-bundle-id "$SPOOF_ID" -sender-app-path "$SELF_APP" -timeout 1 2>/dev/null
@@ -222,7 +223,7 @@ elif [ -d "$HELPER_TMP" ]; then
 else
   HELPER_APP=""
 fi
-BASE_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$ROOT_DIR/hooks/claude-notify.app/Contents/Info.plist" 2>/dev/null)
+BASE_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$HOOKS_DIR/claude-notify.app/Contents/Info.plist" 2>/dev/null)
 EXPECTED_PREFIX="${BASE_BUNDLE_ID:-com.gwk.claude-notify}.spoof."
 if [ -n "$HELPER_APP" ]; then
   HELPER_IDENTIFIER=$(codesign -dv "$HELPER_APP" 2>&1 | sed -n 's/^Identifier=//p' | head -n 1)

@@ -3,6 +3,7 @@
 
 # Swift Package build artifacts
 .build/
+hooks/claude-notify/.build/
 
 # Build artifacts
 hooks/claude-notify.app/Contents/MacOS/

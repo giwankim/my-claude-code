@@ -17,8 +17,8 @@ jobs:
       - name: Cache Swift build
         uses: actions/cache@v4
         with:
-          path: .build
-          key: ${{ runner.os }}-swift-unit-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Makefile') }}
+          path: hooks/claude-notify/.build
+          key: ${{ runner.os }}-swift-unit-${{ hashFiles('hooks/claude-notify/Package.swift', 'hooks/claude-notify/Sources/**', 'hooks/claude-notify/Tests/**', 'hooks/claude-notify/Makefile', 'hooks/claude-notify/tests/shell/**', 'Makefile', 'hooks/notify.sh', 'hooks/test-claude-notify.sh') }}
           restore-keys: |
             ${{ runner.os }}-swift-unit-
             ${{ runner.os }}-swift-
@@ -37,8 +37,8 @@ jobs:
       - name: Cache Swift build
         uses: actions/cache@v4
         with:
-          path: .build
-          key: ${{ runner.os }}-swift-integration-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Makefile', 'hooks/**') }}
+          path: hooks/claude-notify/.build
+          key: ${{ runner.os }}-swift-integration-${{ hashFiles('hooks/claude-notify/Package.swift', 'hooks/claude-notify/Sources/**', 'hooks/claude-notify/Tests/**', 'hooks/claude-notify/Makefile', 'hooks/claude-notify/tests/shell/**', 'Makefile', 'hooks/notify.sh', 'hooks/test-claude-notify.sh') }}
           restore-keys: |
             ${{ runner.os }}-swift-integration-
             ${{ runner.os }}-swift-unit-
@@ -58,8 +58,8 @@ jobs:
       - name: Cache Swift build
         uses: actions/cache@v4
         with:
-          path: .build
-          key: ${{ runner.os }}-swift-e2e-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Makefile', 'hooks/**') }}
+          path: hooks/claude-notify/.build
+          key: ${{ runner.os }}-swift-e2e-${{ hashFiles('hooks/claude-notify/Package.swift', 'hooks/claude-notify/Sources/**', 'hooks/claude-notify/Tests/**', 'hooks/claude-notify/Makefile', 'hooks/claude-notify/tests/shell/**', 'Makefile', 'hooks/notify.sh', 'hooks/test-claude-notify.sh') }}
           restore-keys: |
             ${{ runner.os }}-swift-e2e-
             ${{ runner.os }}-swift-integration-
