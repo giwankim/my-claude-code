@@ -1,7 +1,9 @@
 import NotifyCore
 import XCTest
 
+/// Unit tests for helper utilities and argument rewrite functions.
 final class UnitUtilityTests: XCTestCase {
+  /// Verifies spoof enablement requires both mode and sender identity inputs.
   func test_U009_senderSpoofEnabledRequiresModeAndSenderIdentity() {
     var args = NotifyArgs()
     args.message = "x"
@@ -18,6 +20,7 @@ final class UnitUtilityTests: XCTestCase {
     XCTAssertTrue(senderSpoofEnabled(args: args))
   }
 
+  /// Verifies unsafe path components are sanitized or replaced with defaults.
   func test_U010_safePathComponentSanitizesUnsafeCharacters() {
     XCTAssertEqual(safePathComponent("../../hi there"), "default")
     XCTAssertEqual(safePathComponent("."), "default")
@@ -27,11 +30,13 @@ final class UnitUtilityTests: XCTestCase {
     XCTAssertEqual(safePathComponent(""), "default")
   }
 
+  /// Verifies bundle identifier sanitization strips invalid edge characters.
   func test_U011_safeBundleIDComponentSanitizesAndTrims() {
     XCTAssertEqual(safeBundleIDComponent(".com example.sender."), "com-example.sender")
     XCTAssertEqual(safeBundleIDComponent("***"), "sender")
   }
 
+  /// Verifies isolated helper bundle IDs are derived and distinct from sender IDs.
   func test_U012_helperBundleIDUsesBaseAndNeverEqualsSenderBundleID() {
     let senderID = "com.example.sender"
     let isolatedID = helperBundleID(baseBundleID: "com.test.notify", senderBundleID: senderID)
@@ -40,6 +45,7 @@ final class UnitUtilityTests: XCTestCase {
     XCTAssertTrue(isolatedID.hasPrefix("com.test.notify.spoof."))
   }
 
+  /// Verifies fallback rewrite removes spoof-specific flags and forces off mode.
   func test_U013_buildFallbackArgumentsStripsSenderSpecificFlags() {
     let rewritten = buildFallbackArguments(from: [
       "-message", "hello",
@@ -59,6 +65,7 @@ final class UnitUtilityTests: XCTestCase {
     ])
   }
 
+  /// Verifies spoof retry rewrite keeps sender flags while dropping origin markers.
   func test_U014_buildRetrySpoofArgumentsRetainsSenderInputsButDropsOrigin() {
     let rewritten = buildRetrySpoofArguments(from: [
       "-message", "hello",
@@ -75,6 +82,7 @@ final class UnitUtilityTests: XCTestCase {
     ])
   }
 
+  /// Verifies icon candidate extraction normalizes names and removes duplicates.
   func test_U015_iconCandidatesNormalizesAndDeduplicates() {
     let info: [String: Any] = [
       "CFBundleIconFile": "AppIcon",
@@ -91,6 +99,7 @@ final class UnitUtilityTests: XCTestCase {
     ])
   }
 
+  /// Verifies relaunch rewrite strips internal flags and appends fresh origin info.
   func test_U016_buildRelaunchArgumentsRemovesInternalFlagsAndAddsOrigin() {
     let rewritten = buildRelaunchArguments(
       from: [

@@ -2,6 +2,7 @@ import Cocoa
 import NotifyCore
 @preconcurrency import UserNotifications
 
+/// Prints CLI usage text to standard error.
 func usage() {
   let text = """
     Usage: claude-notify [options]
@@ -24,25 +25,30 @@ func usage() {
   FileHandle.standardError.write(Data(text.utf8))
 }
 
+/// Prints an error-prefixed message to standard error.
 func warn(_ msg: String) {
   FileHandle.standardError.write(Data("Error: \(msg)\n".utf8))
 }
 
+/// Prints a warning-prefixed message to standard error.
 func warning(_ msg: String) {
   FileHandle.standardError.write(Data("Warning: \(msg)\n".utf8))
 }
 
+/// Emits a fatal error message, cleans runtime state, and terminates.
 func die(_ msg: String) -> Never {
   warn(msg)
   removePid()
   exit(1)
 }
 
+/// Removes runtime PID state and exits successfully.
 func exitClean() -> Never {
   removePid()
   exit(0)
 }
 
+/// Parses command-line arguments and exits on parse errors.
 func parseArgs() -> NotifyArgs {
   do {
     return try ArgumentParser.parse(Array(CommandLine.arguments.dropFirst()))
@@ -71,6 +77,7 @@ func parseArgs() -> NotifyArgs {
 
 // MARK: - PID file management
 
+/// Builds the default PID file path in a user-scoped temporary/cache directory.
 func defaultPidPath() -> String {
   let fm = FileManager.default
   let baseDirectory: URL
@@ -91,6 +98,7 @@ func defaultPidPath() -> String {
 let pidPath = normalizeOption(ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_PID_FILE"])
   ?? defaultPidPath()
 
+/// Ensures the PID parent directory exists with restricted permissions.
 func ensurePidDirectoryExists() -> Bool {
   let dir = URL(fileURLWithPath: pidPath).deletingLastPathComponent()
   do {
@@ -106,6 +114,7 @@ func ensurePidDirectoryExists() -> Bool {
   }
 }
 
+/// Reads and validates a PID value from the runtime PID file.
 func readPidFromFile() -> pid_t? {
   let fd = open(pidPath, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
   guard fd >= 0 else { return nil }
@@ -121,6 +130,7 @@ func readPidFromFile() -> pid_t? {
   return pid
 }
 
+/// Resolves the current executable path for relaunch and identity checks.
 func currentExecutablePath() -> String? {
   if let executablePath = Bundle.main.executablePath {
     return executablePath
@@ -140,6 +150,7 @@ func currentExecutablePath() -> String? {
   ).path
 }
 
+/// Resolves the executable basename used for process ownership checks.
 func currentExecutableName() -> String {
   let path = normalizeOption(currentExecutablePath())
     ?? normalizeOption(CommandLine.arguments.first)
@@ -147,6 +158,7 @@ func currentExecutableName() -> String {
   return URL(fileURLWithPath: path).lastPathComponent
 }
 
+/// Resolves process executable name for a running PID.
 func processExecutableName(pid: pid_t) -> String? {
   var buf = [CChar](repeating: 0, count: Int(MAXPATHLEN))
   let len = proc_name(pid, &buf, UInt32(buf.count))
@@ -156,6 +168,7 @@ func processExecutableName(pid: pid_t) -> String? {
   return name.isEmpty ? nil : name
 }
 
+/// Terminates a prior owned runtime process referenced by the PID file.
 func killPrevious() {
   guard let pid = readPidFromFile() else { return }
 
@@ -177,6 +190,7 @@ func killPrevious() {
   usleep(100_000)
 }
 
+/// Creates the runtime PID file with race-resistant filesystem flags.
 func writePid() {
   guard ensurePidDirectoryExists() else { return }
 
@@ -223,10 +237,12 @@ func writePid() {
   }
 }
 
+/// Removes the runtime PID file if present.
 func removePid() {
   _ = unlink(pidPath)
 }
 
+/// Installs termination handlers that clean PID state on exit signals.
 func installSignalHandlers() {
   let handler: @convention(c) (Int32) -> Void = { _ in
     removePid()
@@ -238,13 +254,16 @@ func installSignalHandlers() {
 
 // MARK: - Notification delegate
 
+/// Handles notification click and presentation callbacks.
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
   let args: NotifyArgs
 
+  /// Creates a delegate bound to parsed runtime arguments.
   init(args: NotifyArgs) {
     self.args = args
   }
 
+  /// Handles notification click interactions and optional execute/activate actions.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse,
@@ -286,6 +305,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     exit(0)
   }
 
+  /// Configures foreground presentation options for incoming notifications.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification,
@@ -297,6 +317,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
 // MARK: - Remove mode
 
+/// Removes delivered and pending notifications for a group and exits.
 func handleRemove(group: String) -> Never {
   let center = UNUserNotificationCenter.current()
   center.removeDeliveredNotifications(withIdentifiers: [group])
@@ -307,14 +328,17 @@ func handleRemove(group: String) -> Never {
 
 // MARK: - Sender spoofing runtime helpers
 
+/// Returns whether helper bundle IDs should be isolated per sender.
 func useIsolatedHelperBundleID() -> Bool {
   ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID"] == "1"
 }
 
+/// Returns whether auto retry without isolation is permitted after spoof failure.
 func allowNonIsolatedSpoofRetry() -> Bool {
   ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY"] == "1"
 }
 
+/// Launches fallback notification flows when spoofed auto mode fails.
 func tryAutoFallbackIfNeeded(args: NotifyArgs) {
   guard args.senderMode == .auto, args.spoofedRun, !args.fallbackRun else { return }
   guard let originPath = normalizeOption(args.originExecPath) else {
@@ -354,6 +378,7 @@ func tryAutoFallbackIfNeeded(args: NotifyArgs) {
   }
 }
 
+/// Relaunches the prepared helper app and waits for completion.
 func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
   let forwardedArgs = buildRelaunchArguments(
     from: Array(CommandLine.arguments.dropFirst()),
@@ -383,6 +408,7 @@ func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
 
 // MARK: - Post notification
 
+/// Requests authorization and posts the notification payload.
 func postNotification(args: NotifyArgs, delegate: NotificationDelegate) {
   let center = UNUserNotificationCenter.current()
   center.delegate = delegate

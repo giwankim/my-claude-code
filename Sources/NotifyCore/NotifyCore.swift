@@ -1,12 +1,14 @@
 import AppKit
 import Foundation
 
+/// Controls how sender spoofing should be handled during notification delivery.
 public enum SenderMode: String, CaseIterable, Sendable {
   case auto
   case off
   case required
 }
 
+/// Represents parsed command-line arguments for a notification run.
 public struct NotifyArgs: Equatable, Sendable {
   public var title = "Notification"
   public var subtitle: String?
@@ -24,9 +26,11 @@ public struct NotifyArgs: Equatable, Sendable {
   public var fallbackRun = false
   public var timeout: TimeInterval = 90
 
+  /// Creates a default argument container with baseline runtime values.
   public init() {}
 }
 
+/// Describes parser failures that should be surfaced to the caller.
 public enum ArgParseError: Error, Equatable {
   case helpRequested
   case missingValue(String)
@@ -36,13 +40,25 @@ public enum ArgParseError: Error, Equatable {
   case missingMessage
 }
 
+/// Parses command-line tokens into a validated ``NotifyArgs`` value.
 public struct ArgumentParser {
+  /// Creates a parser instance.
   public init() {}
 
+  /// Parses argument tokens with a temporary parser instance.
+  ///
+  /// - Parameter argv: Command-line tokens without the executable name.
+  /// - Returns: A validated ``NotifyArgs`` value.
+  /// - Throws: ``ArgParseError`` when tokens are invalid or incomplete.
   public static func parse(_ argv: [String]) throws -> NotifyArgs {
     try ArgumentParser().parse(argv)
   }
 
+  /// Parses argument tokens into a validated arguments model.
+  ///
+  /// - Parameter argv: Command-line tokens without the executable name.
+  /// - Returns: A validated ``NotifyArgs`` value.
+  /// - Throws: ``ArgParseError`` when tokens are invalid or incomplete.
   public func parse(_ argv: [String]) throws -> NotifyArgs {
     var args = NotifyArgs()
     var values = argv
@@ -102,6 +118,13 @@ public struct ArgumentParser {
     return args
   }
 
+  /// Consumes the next value token for a flag.
+  ///
+  /// - Parameters:
+  ///   - flag: The current option token.
+  ///   - argv: Remaining argument tokens.
+  /// - Returns: The value associated with the provided flag.
+  /// - Throws: ``ArgParseError/missingValue(_:)`` when no value remains.
   private func takeValue(_ flag: String, from argv: inout [String]) throws -> String {
     guard !argv.isEmpty else {
       throw ArgParseError.missingValue(flag)
@@ -110,17 +133,29 @@ public struct ArgumentParser {
   }
 }
 
+/// Normalizes optional string input by trimming whitespace and dropping empties.
+///
+/// - Parameter value: A potentially empty optional string.
+/// - Returns: A trimmed non-empty string or `nil`.
 public func normalizeOption(_ value: String?) -> String? {
   guard let value else { return nil }
   let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
   return trimmed.isEmpty ? nil : trimmed
 }
 
+/// Determines whether sender spoofing should run for the current arguments.
+///
+/// - Parameter args: Parsed runtime arguments.
+/// - Returns: `true` when spoofing mode is enabled and sender identity exists.
 public func senderSpoofEnabled(args: NotifyArgs) -> Bool {
   args.senderMode != .off
     && (normalizeOption(args.senderBundleID) != nil || normalizeOption(args.senderAppPath) != nil)
 }
 
+/// Produces a filesystem-safe path component for sender-specific directories.
+///
+/// - Parameter value: Raw sender identifier text.
+/// - Returns: A sanitized path component or `"default"` when unsafe.
 public func safePathComponent(_ value: String) -> String {
   let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_")
   let withoutSeparators = value
@@ -135,6 +170,10 @@ public func safePathComponent(_ value: String) -> String {
   return sanitized
 }
 
+/// Produces a bundle-identifier-safe token for helper bundle identifiers.
+///
+/// - Parameter value: Raw bundle identifier component text.
+/// - Returns: A sanitized token or `"sender"` when no safe characters remain.
 public func safeBundleIDComponent(_ value: String) -> String {
   let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
   let converted = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
@@ -142,12 +181,23 @@ public func safeBundleIDComponent(_ value: String) -> String {
   return sanitized.isEmpty ? "sender" : sanitized
 }
 
+/// Builds the helper application bundle identifier used for spoofed relaunches.
+///
+/// - Parameters:
+///   - baseBundleID: Optional base bundle identifier for this tool.
+///   - senderBundleID: Sender bundle identifier used to scope helper identity.
+/// - Returns: A spoof helper bundle identifier that does not reuse sender identity.
 public func helperBundleID(baseBundleID: String?, senderBundleID: String) -> String {
   let base = normalizeOption(baseBundleID) ?? "com.gwk.claude-notify"
   return "\(base).spoof.\(safeBundleIDComponent(senderBundleID))"
 }
 
+/// Extracts ordered icon filename candidates from an app `Info.plist` dictionary.
+///
+/// - Parameter info: Parsed plist dictionary for an application bundle.
+/// - Returns: Deduplicated icon filenames normalized to `.icns`.
 public func iconCandidates(info: [String: Any]) -> [String] {
+  /// Normalizes icon values to explicit `.icns` filenames.
   func normalizeIconName(_ name: String) -> String {
     name.contains(".") ? name : "\(name).icns"
   }
@@ -176,6 +226,10 @@ private let flagsWithValues: Set<String> = [
   "-sender-app-path", "-origin-exec"
 ]
 
+/// Rewrites arguments for non-spoof fallback execution.
+///
+/// - Parameter argv: Original process arguments without executable name.
+/// - Returns: Arguments with spoof-only options removed and fallback markers applied.
 public func buildFallbackArguments(from argv: [String]) -> [String] {
   var out: [String] = []
   var index = 0
@@ -206,6 +260,10 @@ public func buildFallbackArguments(from argv: [String]) -> [String] {
   return out
 }
 
+/// Rewrites arguments for retrying spoof without isolated helper bundle ID.
+///
+/// - Parameter argv: Original process arguments without executable name.
+/// - Returns: Arguments with relaunch-only options removed.
 public func buildRetrySpoofArguments(from argv: [String]) -> [String] {
   var out: [String] = []
   var index = 0
@@ -231,6 +289,12 @@ public func buildRetrySpoofArguments(from argv: [String]) -> [String] {
   return out
 }
 
+/// Rewrites arguments for helper-app relaunch while preserving user-facing flags.
+///
+/// - Parameters:
+///   - argv: Original process arguments without executable name.
+///   - originExecutablePath: Path to the original executable for fallback/retry runs.
+/// - Returns: Relaunch arguments containing internal relaunch markers.
 public func buildRelaunchArguments(from argv: [String], originExecutablePath: String?) -> [String] {
   var out: [String] = []
   var index = 0
@@ -260,6 +324,7 @@ public func buildRelaunchArguments(from argv: [String], originExecutablePath: St
   return out
 }
 
+/// Describes sender spoofing failures encountered during lookup or helper preparation.
 public enum SenderSpoofError: LocalizedError {
   case missingSenderBundleID
   case senderAppNotFound(String)
@@ -289,12 +354,20 @@ public enum SenderSpoofError: LocalizedError {
   }
 }
 
+/// Captures sender app metadata used when preparing spoof helper bundles.
 public struct SenderAppInfo {
   public let bundleID: String
   public let displayName: String
   public let appURL: URL
   public let iconFile: String?
 
+  /// Creates a sender metadata container used by helper preparation.
+  ///
+  /// - Parameters:
+  ///   - bundleID: Sender app bundle identifier.
+  ///   - displayName: Display name for notifications and helper bundle metadata.
+  ///   - appURL: URL of the sender app bundle.
+  ///   - iconFile: Preferred icon filename inside sender bundle resources.
   public init(bundleID: String, displayName: String, appURL: URL, iconFile: String?) {
     self.bundleID = bundleID
     self.displayName = displayName
@@ -303,11 +376,18 @@ public struct SenderAppInfo {
   }
 }
 
+/// Provides lookup dependencies for resolving sender app metadata.
 public struct SenderResolver {
   public let bundleLookup: (String) -> URL?
   public let appRoots: [URL]
   public let fileManager: FileManager
 
+  /// Creates a resolver from injected lookup and filesystem dependencies.
+  ///
+  /// - Parameters:
+  ///   - bundleLookup: Resolves a bundle identifier to an app URL.
+  ///   - appRoots: Root directories scanned when lookup returns no direct match.
+  ///   - fileManager: Filesystem dependency used for scanning and validation.
   public init(
     bundleLookup: @escaping (String) -> URL?,
     appRoots: [URL],
@@ -318,6 +398,10 @@ public struct SenderResolver {
     self.fileManager = fileManager
   }
 
+  /// Builds the default resolver backed by `NSWorkspace` and standard app roots.
+  ///
+  /// - Parameter fileManager: Filesystem dependency used for fallback root scanning.
+  /// - Returns: A resolver configured for runtime use.
   public static func live(fileManager: FileManager = .default) -> SenderResolver {
     SenderResolver(
       bundleLookup: { bundleID in
@@ -332,6 +416,11 @@ public struct SenderResolver {
   }
 }
 
+/// Loads an application's `Info.plist` into a Swift dictionary.
+///
+/// - Parameter appURL: URL of the `.app` bundle.
+/// - Returns: Parsed plist dictionary for the target app.
+/// - Throws: ``SenderSpoofError/unreadableSenderInfoPlist(_:)`` when parsing fails.
 public func readInfoPlist(appURL: URL) throws -> [String: Any] {
   let infoURL = appURL.appendingPathComponent("Contents/Info.plist")
   guard let dict = NSDictionary(contentsOf: infoURL) as? [String: Any] else {
@@ -340,6 +429,13 @@ public func readInfoPlist(appURL: URL) throws -> [String: Any] {
   return dict
 }
 
+/// Resolves the preferred sender icon filename from bundle metadata/resources.
+///
+/// - Parameters:
+///   - appURL: URL of the sender `.app` bundle.
+///   - info: Parsed sender `Info.plist` dictionary.
+///   - fileManager: Filesystem dependency used for file existence checks.
+/// - Returns: The chosen `.icns` filename, or `nil` when no icon can be found.
 public func resolveSenderIconFile(appURL: URL, info: [String: Any], fileManager: FileManager = .default) -> String? {
   let resourcesURL = appURL.appendingPathComponent("Contents/Resources", isDirectory: true)
 
@@ -357,6 +453,13 @@ public func resolveSenderIconFile(appURL: URL, info: [String: Any], fileManager:
   return files.sorted().first { $0.lowercased().hasSuffix(".icns") }
 }
 
+/// Resolves the sender application URL from explicit path or bundle identifier.
+///
+/// - Parameters:
+///   - args: Parsed runtime arguments that include sender selection inputs.
+///   - resolver: Lookup/scanning dependencies.
+/// - Returns: URL of the matched sender `.app` bundle.
+/// - Throws: ``SenderSpoofError`` when sender lookup cannot be completed.
 public func resolveSenderAppURL(args: NotifyArgs, resolver: SenderResolver = .live()) throws -> URL {
   if let path = normalizeOption(args.senderAppPath) {
     let expanded = NSString(string: path).expandingTildeInPath
@@ -397,6 +500,13 @@ public func resolveSenderAppURL(args: NotifyArgs, resolver: SenderResolver = .li
   throw SenderSpoofError.senderAppNotFound("bundle id \(bundleID)")
 }
 
+/// Resolves sender metadata required to construct spoof helper bundles.
+///
+/// - Parameters:
+///   - args: Parsed runtime arguments that include sender selection inputs.
+///   - resolver: Lookup/scanning dependencies.
+/// - Returns: Structured sender metadata used by helper preparation.
+/// - Throws: ``SenderSpoofError`` when sender metadata cannot be resolved.
 public func resolveSenderAppInfo(args: NotifyArgs, resolver: SenderResolver = .live()) throws -> SenderAppInfo {
   let appURL = try resolveSenderAppURL(args: args, resolver: resolver)
   let info = try readInfoPlist(appURL: appURL)
@@ -415,11 +525,23 @@ public func resolveSenderAppInfo(args: NotifyArgs, resolver: SenderResolver = .l
   return SenderAppInfo(bundleID: bundleID, displayName: displayName, appURL: appURL, iconFile: iconFile)
 }
 
+/// Writes a plist dictionary as XML at a target URL.
+///
+/// - Parameters:
+///   - plist: Dictionary to serialize.
+///   - url: Destination plist URL.
+/// - Throws: Any serialization or file write error.
 public func writeInfoPlist(_ plist: [String: Any], to url: URL) throws {
   let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
   try data.write(to: url, options: .atomic)
 }
 
+/// Performs ad-hoc code signing for a prepared helper app bundle.
+///
+/// - Parameters:
+///   - helperAppURL: URL of the helper `.app` bundle.
+///   - identifier: Bundle identifier to embed during signing.
+/// - Throws: ``SenderSpoofError/failedToSignHelper(_:)`` when signing fails.
 public func signHelperApp(helperAppURL: URL, identifier: String) throws {
   let task = Process()
   task.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
@@ -442,6 +564,7 @@ public func signHelperApp(helperAppURL: URL, identifier: String) throws {
   }
 }
 
+/// Controls filesystem and signing behavior for spoof helper preparation.
 public struct HelperPreparationOptions {
   public var isolateHelperBundleID: Bool
   public var baseBundleID: String?
@@ -449,6 +572,14 @@ public struct HelperPreparationOptions {
   public var fileManager: FileManager
   public var signer: (URL, String) throws -> Void
 
+  /// Creates helper preparation options with overridable dependencies.
+  ///
+  /// - Parameters:
+  ///   - isolateHelperBundleID: Whether helper bundle IDs should be isolated from sender IDs.
+  ///   - baseBundleID: Optional base bundle ID used when isolation is enabled.
+  ///   - baseDirectories: Candidate parent directories for helper output.
+  ///   - fileManager: Filesystem dependency used during helper construction.
+  ///   - signer: Signing function applied to the generated helper app.
   public init(
     isolateHelperBundleID: Bool = false,
     baseBundleID: String? = Bundle.main.bundleIdentifier,
@@ -463,6 +594,10 @@ public struct HelperPreparationOptions {
     self.signer = signer
   }
 
+  /// Provides default helper output directories in cache-first order.
+  ///
+  /// - Parameter fileManager: Filesystem dependency used to resolve home paths.
+  /// - Returns: Candidate directories used by helper preparation.
   public static func defaultBaseDirectories(fileManager: FileManager = .default) -> [URL] {
     [
       fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/claude-notify/sender", isDirectory: true),
@@ -471,6 +606,14 @@ public struct HelperPreparationOptions {
   }
 }
 
+/// Prepares a signed helper executable configured to post as the sender app.
+///
+/// - Parameters:
+///   - sender: Sender app metadata used for helper branding and identifiers.
+///   - sourceExecutablePath: Path of the claude-notify executable to copy.
+///   - options: Filesystem/signing options for helper construction.
+/// - Returns: URL of the generated helper executable inside the helper app bundle.
+/// - Throws: ``SenderSpoofError`` or filesystem/signing errors when preparation fails.
 public func prepareSpoofHelper(
   sender: SenderAppInfo,
   sourceExecutablePath: String,

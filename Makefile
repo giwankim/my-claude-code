@@ -1,7 +1,7 @@
 # Makefile for syncing Claude Code hooks to ~/.claude/hooks/
 
 .PHONY: install diff build test test-fast test-unit test-integration test-e2e \
-	check-cases-unit check-cases-integration check-cases-e2e
+	check-cases-unit check-cases-integration check-cases-e2e check-docstrings
 
 SWIFT_ENV=CLANG_MODULE_CACHE_PATH=$(CURDIR)/.build/clang-module-cache \
 	SWIFTPM_MODULECACHE_OVERRIDE=$(CURDIR)/.build/module-cache \
@@ -31,7 +31,10 @@ check-cases-integration:
 check-cases-e2e:
 	./scripts/check-required-cases.sh e2e hooks/tests/e2e Tests/required-cases.txt
 
-test-unit: check-cases-unit
+check-docstrings:
+	./scripts/check-docstring-coverage.sh --min 80 Sources Tests
+
+test-unit: check-docstrings check-cases-unit
 	$(SWIFT_ENV) swift test --disable-sandbox --filter Unit
 
 test-integration: build check-cases-integration
