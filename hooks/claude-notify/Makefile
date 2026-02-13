@@ -24,7 +24,7 @@ build:
 
 clean:
 	rm -rf .build
-	rm -f $(APP_DIR)/Contents/MacOS/claude-notify
+	rm -rf $(APP_DIR)/Contents/MacOS $(APP_DIR)/Contents/_CodeSignature
 
 check-cases-unit:
 	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests Tests/required-cases.txt

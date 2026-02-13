@@ -11,7 +11,8 @@
 - `Makefile`: module-local build/test/check entrypoints.
 - `Package.swift`: Swift package definition.
 - `Sources/`: production Swift sources.
-- `Tests/`: Swift tests and shell integration/e2e tests.
+- `Tests/`: Swift unit and integration tests.
+- `tests/`: shell integration and e2e test scripts.
 - `scripts/`: required check scripts used by `make` targets.
 - `notify.sh`: canonical hook script entrypoint.
 - `test-claude-notify.sh`: module-local shell test runner.
