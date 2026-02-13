@@ -566,11 +566,11 @@ public func signHelperApp(helperAppURL: URL, identifier: String) throws {
   } catch {
     throw SenderSpoofError.failedToSignHelper(error.localizedDescription)
   }
+  let errData = err.fileHandleForReading.readDataToEndOfFile()
   task.waitUntilExit()
 
   guard task.terminationStatus == 0 else {
-    let data = err.fileHandleForReading.readDataToEndOfFile()
-    let detail = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let detail = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     throw SenderSpoofError.failedToSignHelper(detail ?? "codesign exited \(task.terminationStatus)")
   }
 }

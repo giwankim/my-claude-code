@@ -312,6 +312,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
       task.arguments = ["-c", cmd]
       do {
         try task.run()
+        // Intentional synchronous wait: this short-lived CLI exits immediately after handling actions.
         task.waitUntilExit()
         if task.terminationStatus != 0 {
           warning("click execute command exited \(task.terminationStatus)")
@@ -327,6 +328,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
       task.arguments = ["-b", bundleID]
       do {
         try task.run()
+        // Intentional synchronous wait: this short-lived CLI exits immediately after handling actions.
         task.waitUntilExit()
         if task.terminationStatus != 0 {
           warning("click activate command exited \(task.terminationStatus) for \(bundleID)")

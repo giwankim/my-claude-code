@@ -19,6 +19,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
+drain_pid_file_if_present() {
+  pid_file="$1"
+  max_tries="${2:-20}"
+  if wait_for_pid_file "$pid_file" "$max_tries"; then
+    pid=$(cat "$pid_file" 2>/dev/null)
+    case "$pid" in
+      ''|*[!0-9]*)
+        return 0
+        ;;
+    esac
+    kill "$pid" 2>/dev/null || true
+    wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true
+  fi
+}
+
 case_start "E001" "PID file written on launch"
 rm -f "$PID_FILE"
 "$NOTIFY" -message "pid-test" -group "test-pid" -timeout 5 &
@@ -148,11 +163,7 @@ case_start "E008" "notify.sh runs without error"
 if [ -x "$SCRIPT" ] || [ -f "$SCRIPT" ]; then
   "$SCRIPT" "test from test-runtime.sh" 2>/dev/null
   rc=$?
-  sleep 1
-  if [ -f "$PID_FILE" ]; then
-    kill "$(cat "$PID_FILE")" 2>/dev/null
-    sleep 0.5
-  fi
+  drain_pid_file_if_present "$PID_FILE" 20
   if [ "$rc" -eq 0 ]; then
     pass "E008" "notify.sh exits 0"
   else
@@ -184,11 +195,7 @@ fi
 case_start "E010" "Auto spoofed post failure triggers fallback"
 err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 "$NOTIFY" -message "sender-auto-forced-failure" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
 rc=$?
-sleep 1
-if [ -f "$PID_FILE" ]; then
-  kill "$(cat "$PID_FILE")" 2>/dev/null
-  sleep 0.5
-fi
+drain_pid_file_if_present "$PID_FILE" 20
 if [ "$rc" -eq 0 ]; then
   pass "E010" "auto spoofed post failure exits 0"
 else
@@ -203,6 +210,7 @@ fi
 case_start "E011" "Required spoofed post failure does not fallback"
 err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 "$NOTIFY" -message "sender-required-forced-failure" -sender-mode required -spoofed-run -origin-exec "$NOTIFY" -timeout 1 2>&1 >/dev/null)
 rc=$?
+drain_pid_file_if_present "$PID_FILE" 20
 if [ "$rc" -eq 0 ]; then
   pass "E011" "required spoofed post failure exits 0"
 else
