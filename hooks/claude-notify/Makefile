@@ -14,17 +14,17 @@ SWIFT_ENV=CLANG_MODULE_CACHE_PATH=$(CURDIR)/.build/clang-module-cache \
 	HOME=$(CURDIR)/.build/home \
 	DEVELOPER_DIR=$(DEVELOPER_DIR)
 
-HOOKS_DIR := $(abspath ..)
+APP_DIR := $(CURDIR)/claude-notify.app
 
 build:
 	$(SWIFT_ENV) swift build --disable-sandbox -c release --product claude-notify
-	mkdir -p $(HOOKS_DIR)/claude-notify.app/Contents/MacOS
-	cp .build/release/claude-notify $(HOOKS_DIR)/claude-notify.app/Contents/MacOS/claude-notify
-	codesign -s - $(HOOKS_DIR)/claude-notify.app
+	mkdir -p $(APP_DIR)/Contents/MacOS
+	cp .build/release/claude-notify $(APP_DIR)/Contents/MacOS/claude-notify
+	codesign -s - $(APP_DIR)
 
 clean:
 	rm -rf .build
-	rm -f $(HOOKS_DIR)/claude-notify.app/Contents/MacOS/claude-notify
+	rm -f $(APP_DIR)/Contents/MacOS/claude-notify
 
 check-cases-unit:
 	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests Tests/required-cases.txt

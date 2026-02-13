@@ -1,7 +1,7 @@
 #!/bin/sh
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
-NOTIFY="${NOTIFY_BIN:-$SCRIPT_DIR/../../claude-notify.app/Contents/MacOS/claude-notify}"
+NOTIFY="${NOTIFY_BIN:-$SCRIPT_DIR/claude-notify.app/Contents/MacOS/claude-notify}"
 # Default sender spoofing off so click actions reliably focus tmux instead of spoofed apps.
 SENDER_MODE="${NOTIFY_SENDER_MODE:-off}"
 SENDER_BUNDLE_ID="${NOTIFY_SENDER_BUNDLE_ID:-com.anthropic.claudefordesktop}"

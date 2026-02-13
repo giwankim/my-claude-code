@@ -1,10 +1,14 @@
 # macOS
 .DS_Store
 
+# Local Claude settings should never be committed
+.claude/
+hooks/.claude/
+
 # Swift Package build artifacts
 .build/
 hooks/claude-notify/.build/
 
 # Build artifacts
-hooks/claude-notify.app/Contents/MacOS/
-hooks/claude-notify.app/Contents/_CodeSignature/
+hooks/claude-notify/claude-notify.app/Contents/MacOS/
+hooks/claude-notify/claude-notify.app/Contents/_CodeSignature/
