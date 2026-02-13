@@ -84,6 +84,8 @@ fi
 set +e
 awk -v min="$min" -v filelist="$tmp_files" '
   BEGIN {
+    # Coverage scope intentionally targets type/function entry points used as API/test surfaces.
+    # Excluded by design for now: extension, typealias, var/let properties, subscript, deinit, actor.
     declarationPattern = "^((public|internal|private|fileprivate|open|final|static|class|override|required|convenience|mutating|nonmutating|@preconcurrency)[[:space:]]+)*(enum|struct|class|protocol|func|init)([[:space:](]|$)"
     total = 0
     documented = 0
