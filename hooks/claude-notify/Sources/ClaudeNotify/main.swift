@@ -98,6 +98,15 @@ func defaultPidPath() -> String {
 let pidPath = normalizeOption(ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_PID_FILE"])
   ?? defaultPidPath()
 
+nonisolated(unsafe) private let pidPathCString: UnsafeMutablePointer<CChar> = {
+  let cString = Array(pidPath.utf8CString)
+  let pointer = UnsafeMutablePointer<CChar>.allocate(capacity: cString.count)
+  cString.withUnsafeBufferPointer { buffer in
+    pointer.initialize(from: buffer.baseAddress!, count: buffer.count)
+  }
+  return pointer
+}()
+
 /// Ensures the PID parent directory exists with restricted permissions.
 func ensurePidDirectoryExists() -> Bool {
   let dir = URL(fileURLWithPath: pidPath).deletingLastPathComponent()
@@ -124,7 +133,7 @@ func readPidFromFile() -> pid_t? {
   let size = read(fd, &buffer, buffer.count)
   guard size > 0 else { return nil }
 
-  let text = String(decoding: buffer.prefix(Int(size)), as: UTF8.self)
+  guard let text = String(bytes: buffer.prefix(Int(size)), encoding: .utf8) else { return nil }
   let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
   guard let pid = pid_t(trimmed), pid > 0 else { return nil }
   return pid
@@ -164,7 +173,9 @@ func processExecutableName(pid: pid_t) -> String? {
   let len = proc_name(pid, &buf, UInt32(buf.count))
   guard len > 0 else { return nil }
   let data = buf.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-  let name = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+  guard let name = String(bytes: data, encoding: .utf8)?
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+  else { return nil }
   return name.isEmpty ? nil : name
 }
 
@@ -261,10 +272,15 @@ func removePid() {
   _ = unlink(pidPath)
 }
 
+/// Removes the runtime PID file using a precomputed C string for signal safety.
+func removePidSignalSafe() {
+  _ = unlink(pidPathCString)
+}
+
 /// Installs termination handlers that clean PID state on exit signals.
 func installSignalHandlers() {
   let handler: @convention(c) (Int32) -> Void = { _ in
-    removePid()
+    removePidSignalSafe()
     _exit(0)
   }
   signal(SIGTERM, handler)
@@ -507,6 +523,7 @@ if senderSpoofEnabled(args: args) && !args.spoofedRun {
     case .auto:
       warning(message)
     case .off:
+      // Unreachable: senderSpoofEnabled(args:) is false when senderMode == .off.
       break
     }
   }
