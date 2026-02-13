@@ -1,0 +1,70 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  unit:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-unit-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-unit-
+            ${{ runner.os }}-swift-
+
+      - name: Run unit tests
+        run: make test-unit
+
+  integration:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    needs: unit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-integration-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Makefile', 'hooks/**') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-integration-
+            ${{ runner.os }}-swift-unit-
+            ${{ runner.os }}-swift-
+
+      - name: Run integration tests
+        run: make test-integration
+
+  e2e-shell:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    needs: integration
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-e2e-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Makefile', 'hooks/**') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-e2e-
+            ${{ runner.os }}-swift-integration-
+            ${{ runner.os }}-swift-unit-
+            ${{ runner.os }}-swift-
+
+      - name: Run shell e2e tests
+        run: make test-e2e
