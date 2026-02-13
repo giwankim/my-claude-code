@@ -82,12 +82,21 @@ if [ ! -s "$tmp_files" ]; then
 fi
 
 set +e
-tr '\n' '\0' < "$tmp_files" | xargs -0 awk -v min="$min" '
+awk -v min="$min" -v filelist="$tmp_files" '
   BEGIN {
     declarationPattern = "^((public|internal|private|fileprivate|open|final|static|class|override|required|convenience|mutating|nonmutating|@preconcurrency)[[:space:]]+)*(enum|struct|class|protocol|func|init)([[:space:](]|$)"
     total = 0
     documented = 0
     missingCount = 0
+
+    # Load paths from file into ARGV so awk runs exactly once.
+    while ((getline candidate < filelist) > 0) {
+      if (candidate != "") {
+        ARGV[ARGC] = candidate
+        ARGC += 1
+      }
+    }
+    close(filelist)
   }
 
   function trim(value) {
