@@ -372,7 +372,9 @@ func useIsolatedHelperBundleID() -> Bool {
 
 /// Returns whether auto retry without isolation is permitted after spoof failure.
 func allowNonIsolatedSpoofRetry() -> Bool {
-  ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY"] == "1"
+  let env = ProcessInfo.processInfo.environment
+  return env["CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY"] == "1"
+    || env["NOTIFY_ALLOW_NONISOLATED_RETRY"] == "1"
 }
 
 /// Launches fallback notification flows when spoofed auto mode fails.

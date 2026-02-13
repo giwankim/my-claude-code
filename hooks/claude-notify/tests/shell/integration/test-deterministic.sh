@@ -34,6 +34,22 @@ FAKE_NOTIFY_SCRIPT
   chmod +x "$script_path"
 }
 
+write_fake_origin_exec() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_ORIGIN_SCRIPT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$ORIGIN_ARGS_LOG"
+  i=$((i + 1))
+done
+printf '%s\n' "${CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID:-}" > "$ORIGIN_ISOLATE_LOG"
+printf '%s\n' "${CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY:-}" > "$ORIGIN_ALLOW_RETRY_LOG"
+exit 0
+FAKE_ORIGIN_SCRIPT
+  chmod +x "$script_path"
+}
+
 is_expected_notify_pid() {
   pid="$1"
   case "$pid" in
@@ -269,8 +285,17 @@ case "$HELPER_IDENTIFIER" in
 esac
 
 case_start "I115" "Auto isolated spoof strict fallback avoids non-isolated retry"
+TMP_DIR="/tmp/claude-notify-test-i115.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_ORIGIN="$TMP_DIR/fake-origin.sh"
+ORIGIN_ARGS_LOG="$TMP_DIR/origin-args.log"
+ORIGIN_ISOLATE_LOG="$TMP_DIR/origin-isolate.log"
+ORIGIN_ALLOW_RETRY_LOG="$TMP_DIR/origin-allow-retry.log"
+write_fake_origin_exec "$FAKE_ORIGIN"
 err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID=1 \
-  "$NOTIFY" -message "sender-auto-isolated-strict" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
+  ORIGIN_ARGS_LOG="$ORIGIN_ARGS_LOG" ORIGIN_ISOLATE_LOG="$ORIGIN_ISOLATE_LOG" ORIGIN_ALLOW_RETRY_LOG="$ORIGIN_ALLOW_RETRY_LOG" \
+  "$NOTIFY" -message "sender-auto-isolated-strict" -sender-mode auto -spoofed-run -origin-exec "$FAKE_ORIGIN" -timeout 2 2>&1 >/dev/null)
 rc=$?
 drain_pid_file_if_present "$PID_FILE" 20
 if [ "$rc" -eq 0 ]; then
@@ -278,20 +303,41 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I115" "auto isolated spoof strict fallback exited $rc (expected 0)"
 fi
-if echo "$err" | grep -q "launched fallback notification without spoof"; then
-  pass "I115" "auto isolated spoof strict fallback launches non-spoof fallback"
+if wait_for_file "$ORIGIN_ARGS_LOG" 20 >/dev/null 2>&1; then
+  if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=off$/) found=1} END{exit found?0:1}' "$ORIGIN_ARGS_LOG"; then
+    pass "I115" "auto isolated spoof strict fallback launches non-spoof fallback"
+  else
+    fail "I115" "auto isolated spoof strict fallback did not force sender-mode off"
+  fi
 else
-  fail "I115" "auto isolated spoof strict fallback did not launch non-spoof fallback"
+  fail "I115" "auto isolated spoof strict fallback did not execute origin command"
 fi
-if echo "$err" | grep -q "retrying without isolated helper bundle id"; then
+if grep -q -- '\]=-fallback-run$' "$ORIGIN_ARGS_LOG"; then
+  pass "I115" "auto isolated spoof strict fallback marks fallback-run"
+else
+  fail "I115" "auto isolated spoof strict fallback missing fallback-run marker"
+fi
+if [ -f "$ORIGIN_ISOLATE_LOG" ] && grep -qx "0" "$ORIGIN_ISOLATE_LOG"; then
   fail "I115" "auto isolated spoof strict fallback unexpectedly retried non-isolated helper"
 else
   pass "I115" "auto isolated spoof strict fallback avoids non-isolated retry by default"
 fi
+if ! echo "$err" | grep -q "launched fallback notification without spoof"; then
+  printf '%s\n' "I115 diagnostic: fallback warning text missing (non-fatal)" >&2
+fi
 
 case_start "I116" "Auto isolated spoof opt-in retry enables non-isolated retry"
-err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID=1 CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=1 \
-  "$NOTIFY" -message "sender-auto-isolated-retry" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
+TMP_DIR="/tmp/claude-notify-test-i116.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_ORIGIN="$TMP_DIR/fake-origin.sh"
+ORIGIN_ARGS_LOG="$TMP_DIR/origin-args.log"
+ORIGIN_ISOLATE_LOG="$TMP_DIR/origin-isolate.log"
+ORIGIN_ALLOW_RETRY_LOG="$TMP_DIR/origin-allow-retry.log"
+write_fake_origin_exec "$FAKE_ORIGIN"
+err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID=1 CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=1 NOTIFY_ALLOW_NONISOLATED_RETRY=1 \
+  ORIGIN_ARGS_LOG="$ORIGIN_ARGS_LOG" ORIGIN_ISOLATE_LOG="$ORIGIN_ISOLATE_LOG" ORIGIN_ALLOW_RETRY_LOG="$ORIGIN_ALLOW_RETRY_LOG" \
+  "$NOTIFY" -message "sender-auto-isolated-retry" -sender-mode auto -spoofed-run -origin-exec "$FAKE_ORIGIN" -timeout 2 2>&1 >/dev/null)
 rc=$?
 drain_pid_file_if_present "$PID_FILE" 20
 if [ "$rc" -eq 0 ]; then
@@ -299,10 +345,38 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I116" "auto isolated spoof opt-in retry exited $rc (expected 0)"
 fi
-if echo "$err" | grep -q "retrying without isolated helper bundle id"; then
+if wait_for_file "$ORIGIN_ARGS_LOG" 20 >/dev/null 2>&1; then
+  pass "I116" "auto isolated spoof opt-in retry executed origin command"
+else
+  fail "I116" "auto isolated spoof opt-in retry did not execute origin command"
+fi
+if grep -q -- '\]=-fallback-run$' "$ORIGIN_ARGS_LOG"; then
+  fail "I116" "auto isolated spoof opt-in retry unexpectedly launched fallback-run"
+else
+  pass "I116" "auto isolated spoof opt-in retry avoids fallback-run path"
+fi
+if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=off$/) found=1} END{exit found?0:1}' "$ORIGIN_ARGS_LOG"; then
+  fail "I116" "auto isolated spoof opt-in retry unexpectedly forced sender-mode off"
+else
+  pass "I116" "auto isolated spoof opt-in retry preserves spoof sender mode"
+fi
+if grep -q -- '\]=-origin-exec$' "$ORIGIN_ARGS_LOG"; then
+  fail "I116" "auto isolated spoof opt-in retry unexpectedly retained origin-exec argument"
+else
+  pass "I116" "auto isolated spoof opt-in retry strips origin-exec argument"
+fi
+if [ -f "$ORIGIN_ISOLATE_LOG" ] && grep -qx "0" "$ORIGIN_ISOLATE_LOG"; then
   pass "I116" "auto isolated spoof opt-in retry uses non-isolated helper retry"
 else
-  fail "I116" "auto isolated spoof opt-in retry did not use non-isolated helper retry"
+  fail "I116" "auto isolated spoof opt-in retry did not disable helper isolation on retry"
+fi
+if [ -f "$ORIGIN_ALLOW_RETRY_LOG" ] && grep -qx "1" "$ORIGIN_ALLOW_RETRY_LOG"; then
+  pass "I116" "auto isolated spoof opt-in retry forwards allow-retry env"
+else
+  fail "I116" "auto isolated spoof opt-in retry did not forward allow-retry env"
+fi
+if ! echo "$err" | grep -q "retrying without isolated helper bundle id"; then
+  printf '%s\n' "I116 diagnostic: retry warning text missing (non-fatal)" >&2
 fi
 
 case_start "I117" "notify.sh tmux binary override"
