@@ -23,7 +23,7 @@ jobs:
             ${{ runner.os }}-swift-unit-
             ${{ runner.os }}-swift-
 
-      - name: Run unit tests
+      - name: Run unit tests (includes docstring gate)
         run: make test-unit
 
   integration:

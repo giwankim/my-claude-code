@@ -1,7 +1,9 @@
 import NotifyCore
 import XCTest
 
+/// Integration-style tests for sender resolution and helper preparation flows.
 final class IntegrationNotifyCoreTests: XCTestCase {
+  /// Verifies sender app lookup can resolve fixture apps by bundle identifier.
   func test_I001_resolveSenderAppURLFindsFixtureByBundleID() throws {
     let temp = try makeTempDir()
     defer { try? FileManager.default.removeItem(at: temp) }
@@ -29,6 +31,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     XCTAssertEqual(resolved.resolvingSymlinksInPath().path, appURL.resolvingSymlinksInPath().path)
   }
 
+  /// Verifies sender app info extraction reads display name and icon metadata.
   func test_I002_resolveSenderAppInfoReadsDisplayNameAndIcon() throws {
     let temp = try makeTempDir()
     defer { try? FileManager.default.removeItem(at: temp) }
@@ -57,6 +60,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     XCTAssertEqual(info.iconFile, "FixtureIcon.icns")
   }
 
+  /// Verifies helper preparation isolates bundle identifiers when requested.
   func test_I003_prepareSpoofHelperCreatesIsolatedBundleIdentifier() throws {
     let temp = try makeTempDir()
     defer { try? FileManager.default.removeItem(at: temp) }
@@ -101,6 +105,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     XCTAssertTrue(helperID?.hasPrefix("com.test.notify.spoof.") == true)
   }
 
+  /// Verifies helper preparation copies sender icon assets into helper resources.
   func test_I004_prepareSpoofHelperCopiesIconWhenPresent() throws {
     let temp = try makeTempDir()
     defer { try? FileManager.default.removeItem(at: temp) }
@@ -142,6 +147,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: helperResources.path))
   }
 
+  /// Verifies relaunch argument rewriting removes internal markers consistently.
   func test_I005_buildRelaunchArgumentsStripsInternalFlags() {
     let args = buildRelaunchArguments(
       from: [
@@ -162,6 +168,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     ])
   }
 
+  /// Creates a unique temporary directory for isolated integration fixtures.
   private func makeTempDir() throws -> URL {
     let base = FileManager.default.temporaryDirectory
     let dir = base.appendingPathComponent("notifycore-tests-\(UUID().uuidString)", isDirectory: true)
@@ -169,6 +176,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     return dir
   }
 
+  /// Creates a minimal `.app` fixture with plist metadata and icon resources.
   private func makeFixtureApp(
     under root: URL,
     appName: String,
@@ -194,6 +202,7 @@ final class IntegrationNotifyCoreTests: XCTestCase {
     return appURL
   }
 
+  /// Creates an executable shell fixture used as a helper source binary.
   private func makeDummyExecutable(under root: URL, name: String) throws -> URL {
     let file = root.appendingPathComponent(name)
     try Data("#!/bin/sh\nexit 0\n".utf8).write(to: file)
