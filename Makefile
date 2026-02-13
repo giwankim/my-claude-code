@@ -18,9 +18,7 @@ install:
 		"$(CLAUDE_NOTIFY_DIR)/" "$(INSTALL_HOOK_DIR)/"
 
 diff:
-	diff -q "$(CLAUDE_NOTIFY_DIR)/notify.sh" "$(INSTALL_HOOK_DIR)/notify.sh"
-	diff -q "$(CLAUDE_NOTIFY_DIR)/test-claude-notify.sh" "$(INSTALL_HOOK_DIR)/test-claude-notify.sh"
-	diff -rq "$(CLAUDE_NOTIFY_DIR)/claude-notify.app" "$(INSTALL_HOOK_DIR)/claude-notify.app"
+	diff -rq --exclude='.build' "$(CLAUDE_NOTIFY_DIR)" "$(INSTALL_HOOK_DIR)"
 
 build:
 	$(SUB_MAKE) build
