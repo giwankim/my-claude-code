@@ -18,6 +18,23 @@ register_tmp_dir() {
   TEST_TMP_DIRS="$TEST_TMP_DIRS $dir"
 }
 
+write_fake_notify() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_NOTIFY_SCRIPT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
+  i=$((i + 1))
+done
+if [ -n "${NOTIFY_ENV_LOG:-}" ]; then
+  printf '%s\n' "${CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY:-}" > "$NOTIFY_ENV_LOG"
+fi
+exit 0
+FAKE_NOTIFY_SCRIPT
+  chmod +x "$script_path"
+}
+
 is_expected_notify_pid() {
   pid="$1"
   case "$pid" in
@@ -37,6 +54,15 @@ kill_pid_from_file() {
   pid=$(cat "$pid_file" 2>/dev/null)
   is_expected_notify_pid "$pid" || return 1
   kill "$pid" 2>/dev/null
+}
+
+drain_pid_file_if_present() {
+  pid_file="$1"
+  max_tries="${2:-20}"
+  if wait_for_pid_file "$pid_file" "$max_tries"; then
+    kill_pid_from_file "$pid_file" >/dev/null 2>&1 || true
+    wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true
+  fi
 }
 
 cleanup() {
@@ -146,11 +172,7 @@ case_start "I110" "notify.sh sender env override"
 if [ -x "$SCRIPT" ] || [ -f "$SCRIPT" ]; then
   NOTIFY_SENDER_MODE=off NOTIFY_SENDER_BUNDLE_ID="com.example.__missing_sender__" "$SCRIPT" "notify.sh sender override test" 2>/dev/null
   rc=$?
-  sleep 1
-  if [ -f "$PID_FILE" ]; then
-    kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
-    sleep 0.5
-  fi
+  drain_pid_file_if_present "$PID_FILE" 20
   if [ "$rc" -eq 0 ]; then
     pass "I110" "notify.sh accepts sender env overrides"
   else
@@ -239,7 +261,11 @@ case "$HELPER_IDENTIFIER" in
     fi
     ;;
   *)
-    fail "I114" "spoof helper code signing identifier mismatch"
+    if [ -z "$HELPER_APP" ]; then
+      fail "I114" "spoof helper app not found at $HELPER_HOME or $HELPER_TMP"
+    else
+      fail "I114" "spoof helper code signing identifier '${HELPER_IDENTIFIER}' does not match expected prefix '${EXPECTED_PREFIX}'"
+    fi
     ;;
 esac
 
@@ -247,11 +273,7 @@ case_start "I115" "Auto isolated spoof strict fallback avoids non-isolated retry
 err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID=1 \
   "$NOTIFY" -message "sender-auto-isolated-strict" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
 rc=$?
-sleep 1
-if [ -f "$PID_FILE" ]; then
-  kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
-  sleep 0.5
-fi
+drain_pid_file_if_present "$PID_FILE" 20
 if [ "$rc" -eq 0 ]; then
   pass "I115" "auto isolated spoof strict fallback exits 0"
 else
@@ -272,11 +294,7 @@ case_start "I116" "Auto isolated spoof opt-in retry enables non-isolated retry"
 err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID=1 CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=1 \
   "$NOTIFY" -message "sender-auto-isolated-retry" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
 rc=$?
-sleep 1
-if [ -f "$PID_FILE" ]; then
-  kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
-  sleep 0.5
-fi
+drain_pid_file_if_present "$PID_FILE" 20
 if [ "$rc" -eq 0 ]; then
   pass "I116" "auto isolated spoof opt-in retry exits 0"
 else
@@ -296,15 +314,7 @@ FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 TMUX_LOG="$TMP_DIR/tmux-calls.log"
-cat > "$FAKE_NOTIFY" <<'CASE_I117_NOTIFY'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
-  i=$((i + 1))
-done
-exit 0
-CASE_I117_NOTIFY
+write_fake_notify "$FAKE_NOTIFY"
 cat > "$FAKE_TMUX" <<'CASE_I117_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
@@ -314,7 +324,7 @@ if [ "$1" = "display-message" ]; then
 fi
 exit 0
 CASE_I117_TMUX
-chmod +x "$FAKE_NOTIFY" "$FAKE_TMUX"
+chmod +x "$FAKE_TMUX"
 TMUX="/tmp/fake-socket,123,0" TMUX_PANE="%9" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
   NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux override test" 2>/dev/null
 rc=$?
@@ -344,21 +354,13 @@ FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 TMUX_LOG="$TMP_DIR/tmux-calls.log"
-cat > "$FAKE_NOTIFY" <<'CASE_I118_NOTIFY'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
-  i=$((i + 1))
-done
-exit 0
-CASE_I118_NOTIFY
+write_fake_notify "$FAKE_NOTIFY"
 cat > "$FAKE_TMUX" <<'CASE_I118_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
 exit 1
 CASE_I118_TMUX
-chmod +x "$FAKE_NOTIFY" "$FAKE_TMUX"
+chmod +x "$FAKE_TMUX"
 err=$(TMUX="/tmp/fake-socket,999,0" TMUX_PANE="%7" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
   NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux failure test" 2>&1 >/dev/null)
 rc=$?
@@ -386,16 +388,7 @@ register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
-cat > "$FAKE_NOTIFY" <<'CASE_I119_NOTIFY'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
-  i=$((i + 1))
-done
-exit 0
-CASE_I119_NOTIFY
-chmod +x "$FAKE_NOTIFY"
+write_fake_notify "$FAKE_NOTIFY"
 TMUX="" NOTIFY_SENDER_MODE="" NOTIFY_ALLOW_NONISOLATED_RETRY="" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "default sender mode test" 2>/dev/null
 rc=$?
@@ -418,16 +411,7 @@ register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
-cat > "$FAKE_NOTIFY" <<'CASE_I120_NOTIFY'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
-  i=$((i + 1))
-done
-exit 0
-CASE_I120_NOTIFY
-chmod +x "$FAKE_NOTIFY"
+write_fake_notify "$FAKE_NOTIFY"
 TMUX="" NOTIFY_SENDER_MODE=auto NOTIFY_ALLOW_NONISOLATED_RETRY="" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "sender mode auto override test" 2>/dev/null
 rc=$?
@@ -451,17 +435,7 @@ mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 ENV_LOG="$TMP_DIR/notify-env.log"
-cat > "$FAKE_NOTIFY" <<'CASE_I121_NOTIFY'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
-  i=$((i + 1))
-done
-printf '%s\n' "$CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY" > "$NOTIFY_ENV_LOG"
-exit 0
-CASE_I121_NOTIFY
-chmod +x "$FAKE_NOTIFY"
+write_fake_notify "$FAKE_NOTIFY"
 TMUX="" NOTIFY_SENDER_MODE="" NOTIFY_ALLOW_NONISOLATED_RETRY="" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_ENV_LOG="$ENV_LOG" "$SCRIPT" "default retry env test" 2>/dev/null
 rc=$?
