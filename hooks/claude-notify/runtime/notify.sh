@@ -20,20 +20,15 @@ else
 fi
 
 notify_run() {
+  set -- "$@" \
+    -timeout "$NOTIFY_TIMEOUT" \
+    -sender-mode "$SENDER_MODE" \
+    -sender-bundle-id "$SENDER_BUNDLE_ID"
   if [ -n "$SENDER_APP_PATH" ]; then
-    CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-      CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" \
-      -timeout "$NOTIFY_TIMEOUT" \
-      -sender-mode "$SENDER_MODE" \
-      -sender-bundle-id "$SENDER_BUNDLE_ID" \
-      -sender-app-path "$SENDER_APP_PATH"
-  else
-    CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-      CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" \
-      -timeout "$NOTIFY_TIMEOUT" \
-      -sender-mode "$SENDER_MODE" \
-      -sender-bundle-id "$SENDER_BUNDLE_ID"
+    set -- "$@" -sender-app-path "$SENDER_APP_PATH"
   fi
+  CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
+    CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@"
 }
 
 if [ -n "$TMUX" ]; then
