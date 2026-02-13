@@ -517,14 +517,10 @@ if senderSpoofEnabled(args: args) && !args.spoofedRun {
     exit(status)
   } catch {
     let message = "sender spoof unavailable: \(error.localizedDescription)"
-    switch args.senderMode {
-    case .required:
+    if args.senderMode == .required {
       die(message)
-    case .auto:
+    } else {
       warning(message)
-    case .off:
-      // Unreachable: senderSpoofEnabled(args:) is false when senderMode == .off.
-      break
     }
   }
 }
