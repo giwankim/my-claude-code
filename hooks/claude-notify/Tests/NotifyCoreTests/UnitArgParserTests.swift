@@ -43,6 +43,9 @@ final class UnitArgParserTests: XCTestCase {
     XCTAssertThrowsError(try ArgumentParser.parse(["-message", "x", "-timeout", "0"])) { error in
       XCTAssertEqual(error as? ArgParseError, .invalidTimeout)
     }
+    XCTAssertThrowsError(try ArgumentParser.parse(["-message", "x", "-timeout", "-1"])) { error in
+      XCTAssertEqual(error as? ArgParseError, .invalidTimeout)
+    }
   }
 
   /// Verifies happy-path parsing maps all supported flags to model fields.
