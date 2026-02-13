@@ -142,7 +142,8 @@ func parseArgs() -> Args {
 
 // MARK: - PID file management
 
-let pidPath = "/tmp/claude-notify.pid"
+let pidPath = normalizeOption(ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_PID_FILE"])
+  ?? "/tmp/claude-notify.pid"
 
 func currentExecutableName() -> String {
   let path = normalizeOption(currentExecutablePath())

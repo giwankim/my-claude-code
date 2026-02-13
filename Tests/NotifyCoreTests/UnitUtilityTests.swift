@@ -19,7 +19,11 @@ final class UnitUtilityTests: XCTestCase {
   }
 
   func test_U010_safePathComponentSanitizesUnsafeCharacters() {
-    XCTAssertEqual(safePathComponent("../../hi there"), ".._.._hi_there")
+    XCTAssertEqual(safePathComponent("../../hi there"), "default")
+    XCTAssertEqual(safePathComponent("."), "default")
+    XCTAssertEqual(safePathComponent(".."), "default")
+    XCTAssertEqual(safePathComponent("sender..id"), "default")
+    XCTAssertEqual(safePathComponent("sender/app\\path"), "sender_app_path")
     XCTAssertEqual(safePathComponent(""), "default")
   }
 
