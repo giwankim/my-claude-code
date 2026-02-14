@@ -68,13 +68,16 @@ This script accepts:
 
 - `NOTIFY_BIN`: override binary path.
 - `NOTIFY_TIMEOUT`: notification timeout seconds (default `90`).
-- `NOTIFY_SENDER_MODE`: `off|auto|required` (default `off`).
-- `NOTIFY_SENDER_BUNDLE_ID`: spoof sender bundle ID override.
-- `NOTIFY_SENDER_APP_PATH`: spoof sender app bundle path override.
-- `NOTIFY_ACTIVATE_BUNDLE_ID`: app bundle activated on click.
+- `NOTIFY_SENDER_MODE`: `off|auto|required` (default `auto`).
+- `NOTIFY_SENDER_BUNDLE_ID`: spoof sender bundle ID override (default `com.gwk.claude-notify`).
+- `NOTIFY_SENDER_APP_PATH`: spoof sender app bundle path override (default `claude-notify.app` next to `notify.sh`).
+- `NOTIFY_ACTIVATE_BUNDLE_ID`: optional app bundle activated on click (default auto-infers frontmost app when running in tmux).
+- `NOTIFY_ACTIVATE_OSASCRIPT_BIN`: override `osascript` path used for tmux click-activate inference (default `/usr/bin/osascript`).
 - `NOTIFY_TMUX_BIN`: override tmux binary path.
+- `NOTIFY_TMUX_REDIRECT_SCRIPT`: override tmux click redirect helper path (default `tmux-redirect.sh` next to `notify.sh`).
 - `NOTIFY_ISOLATE_HELPER_BUNDLE_ID`: helper isolation toggle (default `1`).
 - `NOTIFY_ALLOW_NONISOLATED_RETRY`: fallback behavior toggle (default `0`).
+- `NOTIFY_OSASCRIPT_BIN`: override `osascript` path for delivery fallback when `UNUserNotificationCenter` is unavailable.
 
 ## Troubleshooting
 
@@ -84,10 +87,19 @@ This script accepts:
 - tmux warning (`unable to read tmux context`):
   - Notification still posts, but execute action is skipped.
   - Ensure `$TMUX`, `$TMUX_PANE`, and tmux client context are available.
+- Click does not foreground terminal app:
+  - In tmux mode, `notify.sh` infers `-activate` from the frontmost app at send time.
+  - Override explicitly with `NOTIFY_ACTIVATE_BUNDLE_ID` if needed.
 - Sender spoof errors:
   - Use `NOTIFY_SENDER_MODE=off` to disable spoofing.
-  - Use `NOTIFY_SENDER_MODE=auto` for fallback behavior.
+  - Use `NOTIFY_SENDER_MODE=auto` for default self-branded icon behavior with fallback.
   - Use `NOTIFY_SENDER_MODE=required` to fail hard when spoofing cannot be performed.
+- Static Claude icon setup:
+  - The build copies `/Applications/Claude.app/Contents/Resources/electron.icns` into `claude-notify.app` as `claude-code.icns` when available.
+  - Notifications can use this icon even with spoofing disabled (`NOTIFY_SENDER_MODE=off`).
+- Notification authorization denied:
+  - The binary now attempts an AppleScript fallback (`display notification`) when native notification authorization or posting fails.
+  - You can override the fallback binary path with `NOTIFY_OSASCRIPT_BIN` (or `CLAUDE_NOTIFY_OSASCRIPT_BIN`).
 
 ## Maintenance notes
 

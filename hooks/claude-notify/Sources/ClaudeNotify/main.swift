@@ -304,8 +304,6 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-    completionHandler()
-
     if let cmd = args.execute {
       let task = Process()
       task.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -339,6 +337,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 
     removePid()
+    completionHandler()
     exit(0)
   }
 
@@ -429,20 +428,116 @@ func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
     .deletingLastPathComponent()
     .deletingLastPathComponent()
 
+  let markerPath = ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER"]
+  func writeRelaunchMarker(_ line: String) {
+    guard let markerPath else { return }
+    try? "\(line)\n".write(toFile: markerPath, atomically: true, encoding: .utf8)
+  }
+
   if let marker = ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER"] {
-    let line = "open \(helperAppURL.path)\n"
-    try? line.write(toFile: marker, atomically: true, encoding: .utf8)
+    let line = "open \(helperAppURL.path)"
+    try? "\(line)\n".write(toFile: marker, atomically: true, encoding: .utf8)
   }
   if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH"] == "1" {
     return 0
   }
 
+  let openTask = Process()
+  openTask.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+  openTask.arguments = ["-n", "-W", helperAppURL.path, "--args"] + forwardedArgs
+  let openErr = Pipe()
+  openTask.standardError = openErr
+
+  do {
+    try openTask.run()
+    openTask.waitUntilExit()
+    if openTask.terminationStatus == 0 {
+      return 0
+    }
+
+    let errorData = openErr.fileHandleForReading.readDataToEndOfFile()
+    let openError = String(data: errorData, encoding: .utf8)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if let openError, !openError.isEmpty {
+      let firstLine = openError.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? openError
+      warning("sender spoof relaunch via open failed (\(openTask.terminationStatus)): \(firstLine)")
+    } else {
+      warning("sender spoof relaunch via open failed (\(openTask.terminationStatus)); retrying direct helper launch")
+    }
+  } catch {
+    warning("sender spoof relaunch via open failed: \(error.localizedDescription); retrying direct helper launch")
+  }
+
+  writeRelaunchMarker("exec \(executableURL.path)")
+  let execTask = Process()
+  execTask.executableURL = executableURL
+  execTask.arguments = forwardedArgs
+  try execTask.run()
+  execTask.waitUntilExit()
+  return execTask.terminationStatus
+}
+
+/// Resolves the AppleScript binary path used for local-notification fallback.
+func osascriptExecutablePath() -> String {
+  let env = ProcessInfo.processInfo.environment
+  return normalizeOption(env["CLAUDE_NOTIFY_OSASCRIPT_BIN"])
+    ?? normalizeOption(env["NOTIFY_OSASCRIPT_BIN"])
+    ?? "/usr/bin/osascript"
+}
+
+/// Attempts to post a notification via AppleScript when UN delivery is unavailable.
+func postAppleScriptNotification(args: NotifyArgs) -> Bool {
+  let script = """
+    use scripting additions
+    on run argv
+      set messageText to item 1 of argv
+      set titleText to item 2 of argv
+      display notification messageText with title titleText
+    end run
+    """
+
   let task = Process()
-  task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-  task.arguments = ["-n", "-W", helperAppURL.path, "--args"] + forwardedArgs
-  try task.run()
-  task.waitUntilExit()
-  return task.terminationStatus
+  task.executableURL = URL(fileURLWithPath: osascriptExecutablePath())
+  let stderrPipe = Pipe()
+  task.standardError = stderrPipe
+  task.standardOutput = Pipe()
+  task.arguments = [
+    "-e", script, "--",
+    args.message ?? "",
+    args.title
+  ]
+
+  do {
+    try task.run()
+    task.waitUntilExit()
+    let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+    let stderrText = String(data: stderrData, encoding: .utf8)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard task.terminationStatus == 0 else {
+      if let stderrText, !stderrText.isEmpty {
+        let firstLine = stderrText.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? stderrText
+        warning("AppleScript fallback exited \(task.terminationStatus): \(firstLine)")
+      } else {
+        warning("AppleScript fallback exited \(task.terminationStatus)")
+      }
+      return false
+    }
+    warning("posted notification via AppleScript fallback")
+    return true
+  } catch {
+    warning("failed to launch AppleScript fallback: \(error.localizedDescription)")
+    return false
+  }
+}
+
+/// Handles notification delivery failure with sender and AppleScript fallback paths.
+func handleDeliveryFailure(args: NotifyArgs, message: String) {
+  warn(message)
+  tryAutoFallbackIfNeeded(args: args)
+  if postAppleScriptNotification(args: args) {
+    removePid()
+    exit(0)
+  }
 }
 
 // MARK: - Post notification
@@ -452,22 +547,23 @@ func postNotification(args: NotifyArgs, delegate: NotificationDelegate) {
   let center = UNUserNotificationCenter.current()
   center.delegate = delegate
 
+  if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED"] == "1" {
+    handleDeliveryFailure(args: args, message: "notification authorization denied: forced test failure")
+    return
+  }
+
   center.requestAuthorization(options: [.alert, .sound]) { granted, error in
     if !granted {
       if let error {
-        warn("notification authorization denied: \(error.localizedDescription)")
+        handleDeliveryFailure(args: args, message: "notification authorization denied: \(error.localizedDescription)")
       } else {
-        warn("notification authorization denied")
+        handleDeliveryFailure(args: args, message: "notification authorization denied")
       }
-      if args.senderMode == .auto && args.spoofedRun && !args.fallbackRun {
-        tryAutoFallbackIfNeeded(args: args)
-        return
-      }
+      return
     }
 
     if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR"] == "1" {
-      warn("failed to post notification: forced test failure")
-      tryAutoFallbackIfNeeded(args: args)
+      handleDeliveryFailure(args: args, message: "failed to post notification: forced test failure")
       return
     }
 
@@ -486,8 +582,7 @@ func postNotification(args: NotifyArgs, delegate: NotificationDelegate) {
 
     center.add(request) { error in
       if let error {
-        warn("failed to post notification: \(error.localizedDescription)")
-        tryAutoFallbackIfNeeded(args: args)
+        handleDeliveryFailure(args: args, message: "failed to post notification: \(error.localizedDescription)")
       }
     }
   }

@@ -15,11 +15,20 @@ SWIFT_ENV=CLANG_MODULE_CACHE_PATH=$(CURDIR)/.build/clang-module-cache \
 	DEVELOPER_DIR=$(DEVELOPER_DIR)
 
 APP_DIR := $(CURDIR)/claude-notify.app
+APP_RESOURCES_DIR := $(APP_DIR)/Contents/Resources
+APP_ICON_NAME := claude-code.icns
+CLAUDE_ICON_SOURCE ?= /Applications/Claude.app/Contents/Resources/electron.icns
 
 build:
 	$(SWIFT_ENV) swift build --disable-sandbox -c release --product claude-notify
 	mkdir -p $(APP_DIR)/Contents/MacOS
 	cp .build/release/claude-notify $(APP_DIR)/Contents/MacOS/claude-notify
+	mkdir -p $(APP_RESOURCES_DIR)
+	if [ -f "$(CLAUDE_ICON_SOURCE)" ]; then \
+		cp "$(CLAUDE_ICON_SOURCE)" "$(APP_RESOURCES_DIR)/$(APP_ICON_NAME)"; \
+	else \
+		printf '%s\n' "Warning: Claude icon not found at $(CLAUDE_ICON_SOURCE); using existing app icon assets"; \
+	fi
 	codesign -s - $(APP_DIR)
 
 clean:
