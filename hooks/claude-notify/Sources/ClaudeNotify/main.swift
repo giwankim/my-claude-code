@@ -576,6 +576,11 @@ func handleDeliveryFailure(args: NotifyArgs, message: String) {
 
 /// Requests authorization and posts the notification payload.
 func postNotification(args: NotifyArgs, delegate: NotificationDelegate) {
+  // Test hook: skip delivery/auth flow while preserving runtime lifecycle behavior.
+  if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_SKIP_DELIVERY"] == "1" {
+    return
+  }
+
   let center = UNUserNotificationCenter.current()
   center.delegate = delegate
 

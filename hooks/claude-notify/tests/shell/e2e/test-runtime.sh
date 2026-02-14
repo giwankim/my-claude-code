@@ -33,9 +33,11 @@ drain_pid_file_if_present() {
   fi
 }
 
+# PID/signal lifecycle checks are decoupled from OS notification authorization.
+# Delivery/fallback semantics remain covered by E007, E010, and E011.
 case_start "E001" "PID file written on launch"
 rm -f "$PID_FILE"
-"$NOTIFY" -message "pid-test" -group "test-pid" -timeout 5 &
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "pid-test" -group "test-pid" -timeout 5 &
 bg_pid=$!
 file_pid=""
 if wait_for_pid_file "$PID_FILE" 50; then
@@ -57,14 +59,14 @@ sleep 0.2
 
 case_start "E002" "New instance kills previous instance"
 rm -f "$PID_FILE"
-"$NOTIFY" -message "instance-A" -group "test-kill" -timeout 10 &
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "instance-A" -group "test-kill" -timeout 10 &
 shell_a=$!
 if wait_for_pid_file "$PID_FILE" 50; then
   pid_a=$(cat "$PID_FILE" 2>/dev/null)
 else
   pid_a=""
 fi
-"$NOTIFY" -message "instance-B" -group "test-kill" -timeout 5 &
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "instance-B" -group "test-kill" -timeout 5 &
 shell_b=$!
 if [ -n "$pid_a" ] && wait_for_process_exit "$pid_a" 50; then
   pass "E002" "instance A ($pid_a) was killed"
@@ -84,7 +86,7 @@ sleep 0.2
 
 case_start "E003" "Timeout causes exit"
 rm -f "$PID_FILE"
-"$NOTIFY" -message "timeout-test" -group "test-timeout" -timeout 2 &
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "timeout-test" -group "test-timeout" -timeout 2 &
 timeout_pid=$!
 if wait_for_process_exit "$timeout_pid" 60; then
   pass "E003" "process exited after timeout"
@@ -96,7 +98,7 @@ wait "$timeout_pid" 2>/dev/null
 
 case_start "E004" "PID file removed after timeout"
 rm -f "$PID_FILE"
-"$NOTIFY" -message "timeout-cleanup-test" -group "test-timeout-cleanup" -timeout 2 &
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "timeout-cleanup-test" -group "test-timeout-cleanup" -timeout 2 &
 cleanup_pid=$!
 if ! wait_for_pid_file "$PID_FILE" 50; then
   fail "E004" "PID file not created for timeout cleanup test"
@@ -125,7 +127,7 @@ fi
 
 case_start "E006" "SIGTERM causes clean exit and PID removal"
 rm -f "$PID_FILE"
-"$NOTIFY" -message "sigterm-test" -group "test-sigterm" -timeout 30 &
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "sigterm-test" -group "test-sigterm" -timeout 30 &
 sigterm_pid=$!
 if wait_for_pid_file "$PID_FILE" 50; then
   kill -TERM "$sigterm_pid"
@@ -160,7 +162,7 @@ fi
 
 case_start "E008" "notify.sh runs without error"
 if [ -x "$SCRIPT" ] || [ -f "$SCRIPT" ]; then
-  "$SCRIPT" "test from test-runtime.sh" 2>/dev/null
+  CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$SCRIPT" "test from test-runtime.sh" 2>/dev/null
   rc=$?
   drain_pid_file_if_present "$PID_FILE" 20
   if [ "$rc" -eq 0 ]; then
@@ -176,7 +178,7 @@ case_start "E009" "Stale PID file does not kill unrelated process"
 sleep 20 &
 SLEEP_PID=$!
 echo "$SLEEP_PID" > "$PID_FILE"
-"$NOTIFY" -message "stale-pid-guard" -timeout 1 2>/dev/null
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "stale-pid-guard" -timeout 1 2>/dev/null
 rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "E009" "stale PID guard probe exits 0"
