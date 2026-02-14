@@ -35,6 +35,24 @@ func warning(_ msg: String) {
   FileHandle.standardError.write(Data("Warning: \(msg)\n".utf8))
 }
 
+/// Thread-safe byte buffer for process stream reads across callback threads.
+final class LockedDataBuffer: @unchecked Sendable {
+  private let lock = NSLock()
+  private var data = Data()
+
+  func append(_ chunk: Data) {
+    lock.lock()
+    data.append(chunk)
+    lock.unlock()
+  }
+
+  func snapshot() -> Data {
+    lock.lock()
+    defer { lock.unlock() }
+    return data
+  }
+}
+
 /// Emits a fatal error message, cleans runtime state, and terminates.
 func die(_ msg: String) -> Never {
   warn(msg)
@@ -434,10 +452,7 @@ func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
     try? "\(line)\n".write(toFile: markerPath, atomically: true, encoding: .utf8)
   }
 
-  if let marker = ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER"] {
-    let line = "open \(helperAppURL.path)"
-    try? "\(line)\n".write(toFile: marker, atomically: true, encoding: .utf8)
-  }
+  writeRelaunchMarker("open \(helperAppURL.path)")
   if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH"] == "1" {
     return 0
   }
@@ -446,17 +461,31 @@ func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
   openTask.executableURL = URL(fileURLWithPath: "/usr/bin/open")
   openTask.arguments = ["-n", "-W", helperAppURL.path, "--args"] + forwardedArgs
   let openErr = Pipe()
+  let openErrHandle = openErr.fileHandleForReading
+  let openErrData = LockedDataBuffer()
+  openErrHandle.readabilityHandler = { handle in
+    let chunk = handle.availableData
+    if chunk.isEmpty {
+      handle.readabilityHandler = nil
+      return
+    }
+    openErrData.append(chunk)
+  }
   openTask.standardError = openErr
 
   do {
     try openTask.run()
     openTask.waitUntilExit()
+    openErrHandle.readabilityHandler = nil
+    let trailingErrorData = openErrHandle.readDataToEndOfFile()
+    if !trailingErrorData.isEmpty {
+      openErrData.append(trailingErrorData)
+    }
     if openTask.terminationStatus == 0 {
       return 0
     }
 
-    let errorData = openErr.fileHandleForReading.readDataToEndOfFile()
-    let openError = String(data: errorData, encoding: .utf8)?
+    let openError = String(data: openErrData.snapshot(), encoding: .utf8)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
     if let openError, !openError.isEmpty {
       let firstLine = openError.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? openError
@@ -465,6 +494,7 @@ func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
       warning("sender spoof relaunch via open failed (\(openTask.terminationStatus)); retrying direct helper launch")
     }
   } catch {
+    openErrHandle.readabilityHandler = nil
     warning("sender spoof relaunch via open failed: \(error.localizedDescription); retrying direct helper launch")
   }
 
@@ -538,6 +568,8 @@ func handleDeliveryFailure(args: NotifyArgs, message: String) {
     removePid()
     exit(0)
   }
+  removePid()
+  exit(1)
 }
 
 // MARK: - Post notification

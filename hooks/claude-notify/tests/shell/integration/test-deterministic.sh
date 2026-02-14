@@ -64,6 +64,21 @@ FAKE_OSASCRIPT_SCRIPT
   chmod +x "$script_path"
 }
 
+write_failing_osascript() {
+  script_path="$1"
+  cat > "$script_path" <<'FAILING_OSASCRIPT_SCRIPT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
+  i=$((i + 1))
+done
+printf '%s\n' "simulated osascript failure" >&2
+exit 1
+FAILING_OSASCRIPT_SCRIPT
+  chmod +x "$script_path"
+}
+
 is_expected_notify_pid() {
   pid="$1"
   case "$pid" in
@@ -399,21 +414,33 @@ register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_REDIRECT="$TMP_DIR/fake-tmux-redirect.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 TMUX_LOG="$TMP_DIR/tmux-calls.log"
+REDIRECT_ARGS_LOG="$TMP_DIR/redirect-args.log"
 write_fake_notify "$FAKE_NOTIFY"
 cat > "$FAKE_TMUX" <<'CASE_I117_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
 if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|1|win|3|%9|client-1|/dev/ttys001"
+  printf '%s\n' "sess'one|1|win|3|%9|client'name|/dev/tty's001"
   exit 0
 fi
 exit 0
 CASE_I117_TMUX
-chmod +x "$FAKE_TMUX"
+cat > "$FAKE_REDIRECT" <<'CASE_I117_REDIRECT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$REDIRECT_ARGS_LOG"
+  i=$((i + 1))
+done
+exit 0
+CASE_I117_REDIRECT
+chmod +x "$FAKE_TMUX" "$FAKE_REDIRECT"
 TMUX="/tmp/fake-socket,123,0" TMUX_PANE="%9" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
-  NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux override test" 2>/dev/null
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_REDIRECT_SCRIPT="$FAKE_REDIRECT" TMUX_CALL_LOG="$TMUX_LOG" \
+  NOTIFY_SENDER_MODE=off NOTIFY_ACTIVATE_BUNDLE_ID="com.example.term" "$SCRIPT" "tmux override test" 2>/dev/null
 rc=$?
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
@@ -426,11 +453,45 @@ if grep -q "^display-message -t %9 -p " "$TMUX_LOG"; then
 else
   fail "I117" "notify.sh did not use NOTIFY_TMUX_BIN for tmux metadata lookup"
 fi
-if grep -q "tmux-redirect.sh" "$ARGS_LOG" \
-  && grep -q "fake-tmux.sh' '/tmp/fake-socket' '%9' 'sess:1.3' 'client-1' '/dev/ttys001'" "$ARGS_LOG"; then
-  pass "I117" "notify.sh execute payload targets tmux redirect helper with explicit pane and client metadata"
+EXECUTE_PAYLOAD=$(awk '
+  /\]=-execute$/ {
+    if (getline > 0) {
+      sub(/^\[[0-9]+\]=/, "", $0)
+      print $0
+      exit
+    }
+  }
+' "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  pass "I117" "notify.sh captured execute payload"
 else
-  fail "I117" "notify.sh execute payload missing expected tmux redirect helper command"
+  fail "I117" "notify.sh did not include execute payload"
+fi
+if printf '%s\n' "$EXECUTE_PAYLOAD" | grep -Fq "$FAKE_REDIRECT" \
+  && printf '%s\n' "$EXECUTE_PAYLOAD" | grep -Fq "$FAKE_TMUX" \
+  && printf '%s\n' "$EXECUTE_PAYLOAD" | grep -Fq "/tmp/fake-socket" \
+  && printf '%s\n' "$EXECUTE_PAYLOAD" | grep -Fq "%9"; then
+  pass "I117" "notify.sh execute payload includes redirect command components"
+else
+  fail "I117" "notify.sh execute payload missing expected redirect command components"
+fi
+REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I117" "execute payload runs successfully with embedded single quotes"
+else
+  fail "I117" "execute payload failed with embedded single quotes (rc=$rc)"
+fi
+if grep -Fq "[0]=$FAKE_TMUX" "$REDIRECT_ARGS_LOG" \
+  && grep -Fq "[1]=/tmp/fake-socket" "$REDIRECT_ARGS_LOG" \
+  && grep -Fq "[2]=%9" "$REDIRECT_ARGS_LOG" \
+  && grep -Fq "[3]=sess'one:1.3" "$REDIRECT_ARGS_LOG" \
+  && grep -Fq "[4]=client'name" "$REDIRECT_ARGS_LOG" \
+  && grep -Fq "[5]=/dev/tty's001" "$REDIRECT_ARGS_LOG" \
+  && grep -Fq "[6]=com.example.term" "$REDIRECT_ARGS_LOG"; then
+  pass "I117" "quoted execute payload preserves tmux metadata values"
+else
+  fail "I117" "quoted execute payload did not preserve expected tmux metadata values"
 fi
 rm -rf "$TMP_DIR"
 
@@ -540,6 +601,61 @@ else
 fi
 rm -rf "$TMP_DIR"
 
+case_start "I122" "Authorization failure falls back to AppleScript delivery"
+TMP_DIR="/tmp/claude-notify-test-osascript-fallback.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
+OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
+write_fake_osascript "$FAKE_OSASCRIPT"
+err=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" \
+  "$NOTIFY" -title "fallback-title" -subtitle "fallback-subtitle" -message "fallback-message" -timeout 5 2>&1 >/dev/null)
+rc=$?
+drain_pid_file_if_present "$PID_FILE" 20
+if [ "$rc" -eq 0 ]; then
+  pass "I122" "authorization failure fallback exits 0"
+else
+  fail "I122" "authorization failure fallback exited $rc"
+fi
+if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1; then
+  pass "I122" "authorization failure fallback invoked osascript"
+else
+  fail "I122" "authorization failure fallback did not invoke osascript"
+fi
+if grep -q '\[3\]=fallback-message' "$OSASCRIPT_LOG" && grep -q '\[4\]=fallback-title' "$OSASCRIPT_LOG"; then
+  pass "I122" "authorization failure fallback forwarded notification payload"
+else
+  fail "I122" "authorization failure fallback missing forwarded payload"
+fi
+if echo "$err" | grep -q "posted notification via AppleScript fallback"; then
+  pass "I122" "authorization failure fallback emits fallback warning"
+else
+  fail "I122" "authorization failure fallback missing fallback warning"
+fi
+FAILING_OSASCRIPT="$TMP_DIR/failing-osascript.sh"
+OSASCRIPT_FAIL_LOG="$TMP_DIR/osascript-fail-args.log"
+write_failing_osascript "$FAILING_OSASCRIPT"
+err_fail=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAILING_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_FAIL_LOG" \
+  "$NOTIFY" -title "fallback-fail-title" -subtitle "fallback-fail-subtitle" -message "fallback-fail-message" -timeout 10 2>&1 >/dev/null)
+rc_fail=$?
+drain_pid_file_if_present "$PID_FILE" 20
+if [ "$rc_fail" -eq 1 ]; then
+  pass "I122" "authorization failure exits 1 when AppleScript fallback fails"
+else
+  fail "I122" "authorization failure fallback-fail path exited $rc_fail (expected 1)"
+fi
+if wait_for_file "$OSASCRIPT_FAIL_LOG" 20 >/dev/null 2>&1; then
+  pass "I122" "fallback-fail path invoked osascript"
+else
+  fail "I122" "fallback-fail path did not invoke osascript"
+fi
+if echo "$err_fail" | grep -q "AppleScript fallback exited 1"; then
+  pass "I122" "fallback-fail path surfaces AppleScript failure warning"
+else
+  fail "I122" "fallback-fail path missing AppleScript failure warning"
+fi
+rm -rf "$TMP_DIR"
+
 case_start "I123" "notify.sh forwards explicit activate bundle override"
 TMP_DIR="/tmp/claude-notify-test-activate-infer.$$"
 register_tmp_dir "$TMP_DIR"
@@ -583,51 +699,6 @@ if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
   fail "I124" "notify.sh unexpectedly forwarded -activate without explicit override"
 else
   pass "I124" "notify.sh omits -activate by default"
-fi
-rm -rf "$TMP_DIR"
-
-case_start "I128" "notify.sh carries tmux activate bundle in redirect payload without native -activate"
-TMP_DIR="/tmp/claude-notify-test-activate-frontmost.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
-FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
-FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
-FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
-ARGS_LOG="$TMP_DIR/notify-args.log"
-write_fake_notify "$FAKE_NOTIFY"
-cat > "$FAKE_TMUX" <<'CASE_I128_TMUX'
-#!/bin/sh
-if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|3|win|2|%8|client-8|/dev/ttys008"
-  exit 0
-fi
-exit 0
-CASE_I128_TMUX
-cat > "$FAKE_ACTIVATE_OSASCRIPT" <<'CASE_I128_OSASCRIPT'
-#!/bin/sh
-printf '%s\n' "com.mitchellh.ghostty"
-exit 0
-CASE_I128_OSASCRIPT
-chmod +x "$FAKE_TMUX" "$FAKE_ACTIVATE_OSASCRIPT"
-TMUX="/tmp/fake-socket,333,0" TMUX_PANE="%8" TERM_PROGRAM="tmux" NOTIFY_ACTIVATE_BUNDLE_ID="" \
-  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_TMUX_BIN="$FAKE_TMUX" \
-  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "activate frontmost inference test" 2>/dev/null
-rc=$?
-wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
-if [ "$rc" -eq 0 ]; then
-  pass "I128" "notify.sh tmux frontmost activate probe exits 0"
-else
-  fail "I128" "notify.sh tmux frontmost activate probe exited $rc"
-fi
-if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
-  fail "I128" "notify.sh unexpectedly forwarded native -activate in tmux mode"
-else
-  pass "I128" "notify.sh omits native -activate in tmux mode"
-fi
-if grep -q "tmux-redirect.sh'.*'com.mitchellh.ghostty'" "$ARGS_LOG"; then
-  pass "I128" "notify.sh passes inferred activate bundle to tmux redirect helper"
-else
-  fail "I128" "notify.sh did not pass inferred activate bundle to tmux redirect helper"
 fi
 rm -rf "$TMP_DIR"
 
@@ -698,6 +769,31 @@ else
   pass "I125" "click execute payload uses non-empty client targets"
 fi
 rm -rf "$TMP_DIR"
+
+case_start "I126" "Built app bundle includes configured Claude icon asset"
+APP_INFO="$PROJECT_DIR/claude-notify.app/Contents/Info.plist"
+APP_ICON="$PROJECT_DIR/claude-notify.app/Contents/Resources/claude-code.icns"
+SOURCE_ICON="/Applications/Claude.app/Contents/Resources/electron.icns"
+ICON_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$APP_INFO" 2>/dev/null)
+if [ "$ICON_NAME" = "claude-code.icns" ]; then
+  pass "I126" "app Info.plist advertises claude-code.icns as bundle icon"
+else
+  fail "I126" "app Info.plist bundle icon is '${ICON_NAME}' (expected claude-code.icns)"
+fi
+if [ -s "$APP_ICON" ]; then
+  pass "I126" "app bundle includes non-empty claude-code.icns"
+else
+  fail "I126" "app bundle missing claude-code.icns icon asset"
+fi
+if [ -f "$SOURCE_ICON" ]; then
+  if cmp -s "$SOURCE_ICON" "$APP_ICON"; then
+    pass "I126" "bundle icon bytes match source Claude icon"
+  else
+    fail "I126" "bundle icon differs from source Claude icon"
+  fi
+else
+  pass "I126" "source Claude icon missing; skipped byte-for-byte comparison"
+fi
 
 case_start "I127" "notify.sh click execute payload falls back when client-targeted switch fails"
 TMP_DIR="/tmp/claude-notify-test-click-fallback.$$"
@@ -793,61 +889,91 @@ else
 fi
 rm -rf "$TMP_DIR"
 
-case_start "I126" "Built app bundle includes configured Claude icon asset"
-APP_INFO="$PROJECT_DIR/claude-notify.app/Contents/Info.plist"
-APP_ICON="$PROJECT_DIR/claude-notify.app/Contents/Resources/claude-code.icns"
-SOURCE_ICON="/Applications/Claude.app/Contents/Resources/electron.icns"
-ICON_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$APP_INFO" 2>/dev/null)
-if [ "$ICON_NAME" = "claude-code.icns" ]; then
-  pass "I126" "app Info.plist advertises claude-code.icns as bundle icon"
-else
-  fail "I126" "app Info.plist bundle icon is '${ICON_NAME}' (expected claude-code.icns)"
-fi
-if [ -s "$APP_ICON" ]; then
-  pass "I126" "app bundle includes non-empty claude-code.icns"
-else
-  fail "I126" "app bundle missing claude-code.icns icon asset"
-fi
-if [ -f "$SOURCE_ICON" ]; then
-  if cmp -s "$SOURCE_ICON" "$APP_ICON"; then
-    pass "I126" "bundle icon bytes match source Claude icon"
-  else
-    fail "I126" "bundle icon differs from source Claude icon"
-  fi
-else
-  pass "I126" "source Claude icon missing; skipped byte-for-byte comparison"
-fi
-
-case_start "I122" "Authorization failure falls back to AppleScript delivery"
-TMP_DIR="/tmp/claude-notify-test-osascript-fallback.$$"
+case_start "I128" "notify.sh carries tmux activate bundle in redirect payload without native -activate"
+TMP_DIR="/tmp/claude-notify-test-activate-frontmost.$$"
 register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
-FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
-OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
-write_fake_osascript "$FAKE_OSASCRIPT"
-err=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" \
-  "$NOTIFY" -title "fallback-title" -subtitle "fallback-subtitle" -message "fallback-message" -timeout 5 2>&1 >/dev/null)
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+TMUX_LOG="$TMP_DIR/tmux-calls.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_TMUX" <<'CASE_I128_TMUX'
+#!/bin/sh
+printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|3|win|2|%8|client-8|/dev/ttys008"
+  exit 0
+fi
+exit 0
+CASE_I128_TMUX
+cat > "$FAKE_ACTIVATE_OSASCRIPT" <<'CASE_I128_OSASCRIPT'
+#!/bin/sh
+if [ -n "${ACTIVATE_OSASCRIPT_ARGS_LOG:-}" ]; then
+  i=0
+  for arg in "$@"; do
+    printf '[%d]=%s\n' "$i" "$arg" >> "$ACTIVATE_OSASCRIPT_ARGS_LOG"
+    i=$((i + 1))
+  done
+fi
+case "${2:-}" in
+  *"id of app (path to frontmost application as text)"*)
+    printf '%s\n' "com.mitchellh.ghostty"
+    ;;
+esac
+exit 0
+CASE_I128_OSASCRIPT
+chmod +x "$FAKE_TMUX" "$FAKE_ACTIVATE_OSASCRIPT"
+TMUX="/tmp/fake-socket,333,0" TMUX_PANE="%8" TERM_PROGRAM="tmux" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "activate frontmost inference test" 2>/dev/null
 rc=$?
-drain_pid_file_if_present "$PID_FILE" 20
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
-  pass "I122" "authorization failure fallback exits 0"
+  pass "I128" "notify.sh tmux frontmost activate probe exits 0"
 else
-  fail "I122" "authorization failure fallback exited $rc"
+  fail "I128" "notify.sh tmux frontmost activate probe exited $rc"
 fi
-if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1; then
-  pass "I122" "authorization failure fallback invoked osascript"
+if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
+  fail "I128" "notify.sh unexpectedly forwarded native -activate in tmux mode"
 else
-  fail "I122" "authorization failure fallback did not invoke osascript"
+  pass "I128" "notify.sh omits native -activate in tmux mode"
 fi
-if grep -q '\[3\]=fallback-message' "$OSASCRIPT_LOG" && grep -q '\[4\]=fallback-title' "$OSASCRIPT_LOG"; then
-  pass "I122" "authorization failure fallback forwarded notification payload"
+if grep -q "tmux-redirect.sh'.*'com.mitchellh.ghostty'" "$ARGS_LOG"; then
+  pass "I128" "notify.sh passes inferred activate bundle to tmux redirect helper"
 else
-  fail "I122" "authorization failure fallback missing forwarded payload"
+  fail "I128" "notify.sh did not pass inferred activate bundle to tmux redirect helper"
 fi
-if echo "$err" | grep -q "posted notification via AppleScript fallback"; then
-  pass "I122" "authorization failure fallback emits fallback warning"
+EXECUTE_PAYLOAD=$(awk '
+  /\]=-execute$/ {
+    if (getline > 0) {
+      sub(/^\[[0-9]+\]=/, "", $0)
+      print $0
+      exit
+    }
+  }
+' "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  pass "I128" "notify.sh captured execute payload for tmux activate path"
 else
-  fail "I122" "authorization failure fallback missing fallback warning"
+  fail "I128" "notify.sh did not include execute payload for tmux activate path"
+fi
+TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  /bin/sh -c "$EXECUTE_PAYLOAD"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I128" "tmux redirect execute payload runs successfully"
+else
+  fail "I128" "tmux redirect execute payload failed (rc=$rc)"
+fi
+if grep -q '\[1\]=on run argv' "$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  && grep -q '\[2\]=--' "$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  && grep -q '\[3\]=com.mitchellh.ghostty' "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  pass "I128" "tmux redirect passes activate bundle via osascript argv"
+else
+  fail "I128" "tmux redirect did not use argv-based osascript activate call"
 fi
 rm -rf "$TMP_DIR"
 

@@ -21,6 +21,12 @@ log_debug() {
   printf '%s [%d] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$$" "$1" >> "$DEBUG_LOG"
 }
 
+# Quote a single shell argument for execute payload passed via sh -c.
+shell_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# Best-effort send-time inference; click-time foreground app may differ.
 infer_tmux_activate_bundle_id() {
   [ -x "$ACTIVATE_OSASCRIPT_BIN" ] || return
   "$ACTIVATE_OSASCRIPT_BIN" -e 'id of app (path to frontmost application as text)' 2>/dev/null | tr -d '\r'
@@ -102,7 +108,7 @@ if [ -n "$TMUX" ]; then
             PANE_TARGET_INDEX="$PANE_TARGET_ID"
           fi
 
-          EXECUTE_CMD="'$TMUX_REDIRECT_SCRIPT' '$TMUX_BIN' '$SOCKET' '$PANE_TARGET_ID' '$PANE_TARGET_INDEX' '$CLIENT_NAME' '$CLIENT_TTY' '${ACTIVATE_BUNDLE_ID:-}' '${TMUX_REDIRECT_LOG:-}'"
+          EXECUTE_CMD="$(shell_quote "$TMUX_REDIRECT_SCRIPT") $(shell_quote "$TMUX_BIN") $(shell_quote "$SOCKET") $(shell_quote "$PANE_TARGET_ID") $(shell_quote "$PANE_TARGET_INDEX") $(shell_quote "$CLIENT_NAME") $(shell_quote "$CLIENT_TTY") $(shell_quote "${ACTIVATE_BUNDLE_ID:-}") $(shell_quote "${TMUX_REDIRECT_LOG:-}")"
           log_debug "execute payload prepared socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>}"
 
           NOTIFY_ACTIVATE_OVERRIDE="" notify_run \

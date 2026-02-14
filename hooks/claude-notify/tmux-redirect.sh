@@ -1,4 +1,5 @@
 #!/bin/sh
+# Usage: tmux-redirect.sh <tmux_bin> <socket> <pane_id> <pane_index> [client_name] [client_tty] [activate_bundle_id] [debug_log]
 
 TMUX_BIN="$1"
 SOCKET="$2"
@@ -32,7 +33,9 @@ activate_bundle() {
   [ -n "$ACTIVATE_BUNDLE_ID" ] || return 0
   log_debug "activating bundle id $ACTIVATE_BUNDLE_ID"
   if [ -x "$ACTIVATE_OSASCRIPT_BIN" ]; then
-    "$ACTIVATE_OSASCRIPT_BIN" -e "tell application id \"$ACTIVATE_BUNDLE_ID\" to activate" >/dev/null 2>&1
+    "$ACTIVATE_OSASCRIPT_BIN" -e 'on run argv
+  tell application id (item 1 of argv) to activate
+end run' -- "$ACTIVATE_BUNDLE_ID" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -eq 0 ]; then
       log_debug "activate via osascript succeeded for $ACTIVATE_BUNDLE_ID"
