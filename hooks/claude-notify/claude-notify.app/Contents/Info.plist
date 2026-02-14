@@ -6,6 +6,8 @@
   <string>com.gwk.claude-notify</string>
   <key>CFBundleExecutable</key>
   <string>claude-notify</string>
+  <key>CFBundleIconFile</key>
+  <string>claude-code.icns</string>
   <key>CFBundleName</key>
   <string>claude-notify</string>
   <key>CFBundlePackageType</key>

@@ -8,7 +8,7 @@ HOOKS_DIR := hooks
 HOOKS := claude-notify
 CLAUDE_NOTIFY_DIR := $(HOOKS_DIR)/$(firstword $(HOOKS))
 SUB_MAKE := $(MAKE) -C $(CLAUDE_NOTIFY_DIR)
-INSTALL_HOOK_DIR := ~/.claude/hooks/claude-notify
+INSTALL_HOOK_DIR := $(HOME)/.claude/hooks/claude-notify
 
 all: build
 

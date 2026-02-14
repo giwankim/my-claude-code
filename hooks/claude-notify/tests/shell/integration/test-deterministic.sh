@@ -50,6 +50,20 @@ FAKE_ORIGIN_SCRIPT
   chmod +x "$script_path"
 }
 
+write_fake_osascript() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_OSASCRIPT_SCRIPT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
+  i=$((i + 1))
+done
+exit 0
+FAKE_OSASCRIPT_SCRIPT
+  chmod +x "$script_path"
+}
+
 is_expected_notify_pid() {
   pid="$1"
   case "$pid" in
@@ -392,7 +406,7 @@ cat > "$FAKE_TMUX" <<'CASE_I117_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
 if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|1|win|/dev/pts/fake"
+  printf '%s\n' "sess|1|win|3|%9|client-1|/dev/ttys001"
   exit 0
 fi
 exit 0
@@ -412,10 +426,11 @@ if grep -q "^display-message -t %9 -p " "$TMUX_LOG"; then
 else
   fail "I117" "notify.sh did not use NOTIFY_TMUX_BIN for tmux metadata lookup"
 fi
-if grep -q "switch-client -c '/dev/pts/fake' -t '%9'" "$ARGS_LOG"; then
-  pass "I117" "notify.sh execute payload references overridden tmux binary context"
+if grep -q "tmux-redirect.sh" "$ARGS_LOG" \
+  && grep -q "fake-tmux.sh' '/tmp/fake-socket' '%9' 'sess:1.3' 'client-1' '/dev/ttys001'" "$ARGS_LOG"; then
+  pass "I117" "notify.sh execute payload targets tmux redirect helper with explicit pane and client metadata"
 else
-  fail "I117" "notify.sh execute payload missing overridden tmux context"
+  fail "I117" "notify.sh execute payload missing expected tmux redirect helper command"
 fi
 rm -rf "$TMP_DIR"
 
@@ -455,7 +470,7 @@ else
 fi
 rm -rf "$TMP_DIR"
 
-case_start "I119" "notify.sh default sender mode is off"
+case_start "I119" "notify.sh default sender mode is auto"
 TMP_DIR="/tmp/claude-notify-test-default-mode.$$"
 register_tmp_dir "$TMP_DIR"
 mkdir -p "$TMP_DIR"
@@ -471,10 +486,10 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I119" "notify.sh default sender mode probe exited $rc"
 fi
-if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=off$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
-  pass "I119" "notify.sh forwards -sender-mode off by default"
+if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=auto$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+  pass "I119" "notify.sh forwards -sender-mode auto by default"
 else
-  fail "I119" "notify.sh did not forward default -sender-mode off"
+  fail "I119" "notify.sh did not forward default -sender-mode auto"
 fi
 rm -rf "$TMP_DIR"
 
@@ -522,6 +537,317 @@ if [ -f "$ENV_LOG" ] && grep -qx "0" "$ENV_LOG"; then
   pass "I121" "notify.sh exports CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=0 by default"
 else
   fail "I121" "notify.sh did not export default CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=0"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I123" "notify.sh forwards explicit activate bundle override"
+TMP_DIR="/tmp/claude-notify-test-activate-infer.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+TMUX="" TERM_PROGRAM="" NOTIFY_ACTIVATE_BUNDLE_ID="com.googlecode.iterm2" \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "activate explicit test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I123" "notify.sh explicit activate probe exits 0"
+else
+  fail "I123" "notify.sh explicit activate probe exited $rc"
+fi
+if awk '/\]=-activate$/{getline; if ($0 ~ /\]=com.googlecode.iterm2$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+  pass "I123" "notify.sh forwards explicit activate bundle id"
+else
+  fail "I123" "notify.sh did not forward explicit activate bundle id"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I124" "notify.sh omits activate when explicit override is unavailable"
+TMP_DIR="/tmp/claude-notify-test-activate-omit.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+TMUX="" TERM_PROGRAM="iTerm.app" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "activate omission test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I124" "notify.sh activate omission probe exits 0"
+else
+  fail "I124" "notify.sh activate omission probe exited $rc"
+fi
+if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
+  fail "I124" "notify.sh unexpectedly forwarded -activate without explicit override"
+else
+  pass "I124" "notify.sh omits -activate by default"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I128" "notify.sh carries tmux activate bundle in redirect payload without native -activate"
+TMP_DIR="/tmp/claude-notify-test-activate-frontmost.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_TMUX" <<'CASE_I128_TMUX'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|3|win|2|%8|client-8|/dev/ttys008"
+  exit 0
+fi
+exit 0
+CASE_I128_TMUX
+cat > "$FAKE_ACTIVATE_OSASCRIPT" <<'CASE_I128_OSASCRIPT'
+#!/bin/sh
+printf '%s\n' "com.mitchellh.ghostty"
+exit 0
+CASE_I128_OSASCRIPT
+chmod +x "$FAKE_TMUX" "$FAKE_ACTIVATE_OSASCRIPT"
+TMUX="/tmp/fake-socket,333,0" TMUX_PANE="%8" TERM_PROGRAM="tmux" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_TMUX_BIN="$FAKE_TMUX" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "activate frontmost inference test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I128" "notify.sh tmux frontmost activate probe exits 0"
+else
+  fail "I128" "notify.sh tmux frontmost activate probe exited $rc"
+fi
+if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
+  fail "I128" "notify.sh unexpectedly forwarded native -activate in tmux mode"
+else
+  pass "I128" "notify.sh omits native -activate in tmux mode"
+fi
+if grep -q "tmux-redirect.sh'.*'com.mitchellh.ghostty'" "$ARGS_LOG"; then
+  pass "I128" "notify.sh passes inferred activate bundle to tmux redirect helper"
+else
+  fail "I128" "notify.sh did not pass inferred activate bundle to tmux redirect helper"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I125" "notify.sh click execute payload redirects to expected tmux pane"
+TMP_DIR="/tmp/claude-notify-test-click-exec.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+TMUX_LOG="$TMP_DIR/tmux-calls.log"
+CLICK_TMUX_LOG="$TMP_DIR/tmux-click-calls.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_TMUX" <<'CASE_I125_TMUX'
+#!/bin/sh
+printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|7|win|4|%11|client-redir|/dev/ttys777"
+  exit 0
+fi
+exit 0
+CASE_I125_TMUX
+chmod +x "$FAKE_TMUX"
+TMUX="/tmp/fake-socket,777,0" TMUX_PANE="%11" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux click redirect test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I125" "notify.sh tmux click payload probe exits 0"
+else
+  fail "I125" "notify.sh tmux click payload probe exited $rc"
+fi
+EXECUTE_PAYLOAD=$(awk '
+  /\]=-execute$/ {
+    if (getline > 0) {
+      sub(/^\[[0-9]+\]=/, "", $0)
+      print $0
+      exit
+    }
+  }
+' "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  pass "I125" "notify.sh captured execute payload for click redirect"
+else
+  fail "I125" "notify.sh did not include execute payload for click redirect"
+fi
+TMUX_CALL_LOG="$CLICK_TMUX_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I125" "click execute payload runs successfully"
+else
+  fail "I125" "click execute payload exited $rc"
+fi
+if grep -q "switch-client -c client-redir -t %11" "$CLICK_TMUX_LOG" \
+  && grep -q "select-pane -t %11" "$CLICK_TMUX_LOG"; then
+  pass "I125" "click execute payload redirects via client switch + pane select"
+else
+  fail "I125" "click execute payload missing expected redirect command sequence"
+fi
+if grep -q "list-clients" "$CLICK_TMUX_LOG"; then
+  fail "I125" "click execute payload unexpectedly fell back to list-clients when primary client target succeeded"
+else
+  pass "I125" "click execute payload uses primary client metadata before list-clients fallback"
+fi
+if grep -q "switch-client -c  -t" "$CLICK_TMUX_LOG"; then
+  fail "I125" "click execute payload generated empty client target"
+else
+  pass "I125" "click execute payload uses non-empty client targets"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I127" "notify.sh click execute payload falls back when client-targeted switch fails"
+TMP_DIR="/tmp/claude-notify-test-click-fallback.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+TMUX_LOG="$TMP_DIR/tmux-calls.log"
+CLICK_TMUX_LOG="$TMP_DIR/tmux-click-calls.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_TMUX" <<'CASE_I127_TMUX'
+#!/bin/sh
+printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|8|win|5|%12|client-primary|/dev/ttys998"
+  exit 0
+fi
+if [ "$1" = "list-clients" ] || { [ "$1" = "-S" ] && [ "$3" = "list-clients" ]; }; then
+  printf '%s\n' "client-fallback"
+  exit 0
+fi
+case " $* " in
+  *" switch-client -c client-primary -t %12 "*)
+    exit 1
+    ;;
+  *" switch-client -c client-primary -t sess:8.5 "*)
+    exit 1
+    ;;
+  *" switch-client -c /dev/ttys998 -t %12 "*)
+    exit 1
+    ;;
+  *" switch-client -c /dev/ttys998 -t sess:8.5 "*)
+    exit 1
+    ;;
+  *" switch-client -c client-fallback -t %12 "*)
+    exit 1
+    ;;
+esac
+case " $* " in
+  *" switch-client "*)
+    exit 0
+    ;;
+esac
+exit 0
+CASE_I127_TMUX
+chmod +x "$FAKE_TMUX"
+TMUX="/tmp/fake-socket,888,0" TMUX_PANE="%12" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux click fallback test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I127" "notify.sh tmux fallback payload probe exits 0"
+else
+  fail "I127" "notify.sh tmux fallback payload probe exited $rc"
+fi
+EXECUTE_PAYLOAD=$(awk '
+  /\]=-execute$/ {
+    if (getline > 0) {
+      sub(/^\[[0-9]+\]=/, "", $0)
+      print $0
+      exit
+    }
+  }
+' "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  pass "I127" "notify.sh captured execute payload with fallback"
+else
+  fail "I127" "notify.sh did not include execute payload with fallback"
+fi
+TMUX_CALL_LOG="$CLICK_TMUX_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I127" "fallback execute payload runs successfully"
+else
+  fail "I127" "fallback execute payload exited $rc"
+fi
+if grep -q "switch-client -c client-primary -t %12" "$CLICK_TMUX_LOG" \
+  && grep -q "switch-client -c client-primary -t sess:8.5" "$CLICK_TMUX_LOG" \
+  && grep -q "switch-client -c /dev/ttys998 -t %12" "$CLICK_TMUX_LOG" \
+  && grep -q "switch-client -c /dev/ttys998 -t sess:8.5" "$CLICK_TMUX_LOG" \
+  && grep -q "switch-client -c client-fallback -t %12" "$CLICK_TMUX_LOG" \
+  && grep -q "switch-client -c client-fallback -t sess:8.5" "$CLICK_TMUX_LOG"; then
+  pass "I127" "fallback execute payload attempted primary client metadata before list-clients fallback"
+else
+  fail "I127" "fallback execute payload missing expected client-targeted fallback attempts"
+fi
+if grep -q "list-clients -F #{client_name}" "$CLICK_TMUX_LOG" \
+  && grep -q "select-pane -t %12" "$CLICK_TMUX_LOG"; then
+  pass "I127" "fallback execute payload uses list-clients recovery and final pane select"
+else
+  fail "I127" "fallback execute payload missing expected recovery steps"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I126" "Built app bundle includes configured Claude icon asset"
+APP_INFO="$PROJECT_DIR/claude-notify.app/Contents/Info.plist"
+APP_ICON="$PROJECT_DIR/claude-notify.app/Contents/Resources/claude-code.icns"
+SOURCE_ICON="/Applications/Claude.app/Contents/Resources/electron.icns"
+ICON_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$APP_INFO" 2>/dev/null)
+if [ "$ICON_NAME" = "claude-code.icns" ]; then
+  pass "I126" "app Info.plist advertises claude-code.icns as bundle icon"
+else
+  fail "I126" "app Info.plist bundle icon is '${ICON_NAME}' (expected claude-code.icns)"
+fi
+if [ -s "$APP_ICON" ]; then
+  pass "I126" "app bundle includes non-empty claude-code.icns"
+else
+  fail "I126" "app bundle missing claude-code.icns icon asset"
+fi
+if [ -f "$SOURCE_ICON" ]; then
+  if cmp -s "$SOURCE_ICON" "$APP_ICON"; then
+    pass "I126" "bundle icon bytes match source Claude icon"
+  else
+    fail "I126" "bundle icon differs from source Claude icon"
+  fi
+else
+  pass "I126" "source Claude icon missing; skipped byte-for-byte comparison"
+fi
+
+case_start "I122" "Authorization failure falls back to AppleScript delivery"
+TMP_DIR="/tmp/claude-notify-test-osascript-fallback.$$"
+register_tmp_dir "$TMP_DIR"
+mkdir -p "$TMP_DIR"
+FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
+OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
+write_fake_osascript "$FAKE_OSASCRIPT"
+err=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" \
+  "$NOTIFY" -title "fallback-title" -subtitle "fallback-subtitle" -message "fallback-message" -timeout 5 2>&1 >/dev/null)
+rc=$?
+drain_pid_file_if_present "$PID_FILE" 20
+if [ "$rc" -eq 0 ]; then
+  pass "I122" "authorization failure fallback exits 0"
+else
+  fail "I122" "authorization failure fallback exited $rc"
+fi
+if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1; then
+  pass "I122" "authorization failure fallback invoked osascript"
+else
+  fail "I122" "authorization failure fallback did not invoke osascript"
+fi
+if grep -q '\[3\]=fallback-message' "$OSASCRIPT_LOG" && grep -q '\[4\]=fallback-title' "$OSASCRIPT_LOG"; then
+  pass "I122" "authorization failure fallback forwarded notification payload"
+else
+  fail "I122" "authorization failure fallback missing forwarded payload"
+fi
+if echo "$err" | grep -q "posted notification via AppleScript fallback"; then
+  pass "I122" "authorization failure fallback emits fallback warning"
+else
+  fail "I122" "authorization failure fallback missing fallback warning"
 fi
 rm -rf "$TMP_DIR"
 
