@@ -29,7 +29,7 @@ Move all `.md` files from `Clippings/` to `inbox/`, converting filenames to keba
 4. Run the move script from the vault root:
 
    ```bash
-   python3 ~/Development/my-claude-code/skills/clippings-to-inbox/scripts/move_clippings.py
+   python3 .agents/skills/clippings-to-inbox/scripts/move_clippings.py
    ```
 
    The script:
