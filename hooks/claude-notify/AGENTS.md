@@ -17,8 +17,8 @@ Instructions for `/hooks/claude-notify` only.
 
 ## Critical Overrides
 
-- Keep test execution order as `unit -> integration -> e2e`.
-- Keep `notify.sh` as the hook entrypoint, accepting stdin JSON payloads or message text via `$1`.
+- Test execution order must be `unit -> integration -> e2e`.
+- `notify.sh` is the hook entrypoint; it accepts stdin JSON payloads or message text via `$1`.
 - Keep `README.md` synchronized with behavior, env var, and test changes.
 
 ## Detailed Instructions
