@@ -25,6 +25,11 @@ hooks/claude-notify/
 │       ├── unit/
 │       ├── integration/
 │       └── e2e/
+├── docs/
+│   └── agent-instructions/
+│       ├── module-structure.md
+│       ├── build-test-quality.md
+│       └── conventions-maintenance.md
 ├── scripts/
 └── claude-notify.app/
 ```
