@@ -9,7 +9,7 @@ Instructions for `/hooks/claude-notify` only.
 
 ## Module Structure
 
-```
+```text
 hooks/claude-notify/
 ├── Makefile
 ├── Package.swift
@@ -22,8 +22,7 @@ hooks/claude-notify/
 │   └── NotifyCore/NotifyCore.swift
 ├── Tests/
 │   ├── NotifyCoreTests/
-│   └── required-cases.txt
-├── tests/
+│   ├── required-cases.txt
 │   └── shell/
 │       ├── lib/
 │       ├── unit/

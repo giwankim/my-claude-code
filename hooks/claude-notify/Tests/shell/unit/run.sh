@@ -4,4 +4,4 @@ set -e
 
 PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
 
-"$PROJECT_DIR/tests/shell/unit/test-notify-activate.sh"
+"$PROJECT_DIR/Tests/shell/unit/test-notify-activate.sh"

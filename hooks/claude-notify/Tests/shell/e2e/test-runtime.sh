@@ -1,10 +1,10 @@
 #!/bin/sh
 
 PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
-# shellcheck source=hooks/claude-notify/tests/shell/lib/testlib.sh
-. "$PROJECT_DIR/tests/shell/lib/testlib.sh"
-# shellcheck source=hooks/claude-notify/tests/shell/lib/notify-test-helpers.sh
-. "$PROJECT_DIR/tests/shell/lib/notify-test-helpers.sh"
+# shellcheck source=hooks/claude-notify/Tests/shell/lib/testlib.sh
+. "$PROJECT_DIR/Tests/shell/lib/testlib.sh"
+# shellcheck source=hooks/claude-notify/Tests/shell/lib/notify-test-helpers.sh
+. "$PROJECT_DIR/Tests/shell/lib/notify-test-helpers.sh"
 
 NOTIFY="$PROJECT_DIR/claude-notify.app/Contents/MacOS/claude-notify"
 SCRIPT="$PROJECT_DIR/notify.sh"
