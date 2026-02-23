@@ -26,6 +26,8 @@
 
 ## Build and test
 
+`make test-unit` runs both Swift unit tests and shell unit tests (`Tests/shell/unit/run.sh`) from both repository-root and module-directory invocations.
+
 From repository root:
 
 ```bash
@@ -35,8 +37,6 @@ make test-integration
 make test-e2e
 make test
 ```
-
-`make test-unit` runs both Swift unit tests and shell unit tests (`Tests/shell/unit/run.sh`).
 
 From module directory (`hooks/claude-notify`):
 
@@ -112,7 +112,7 @@ This script accepts:
   - `scripts/check-required-cases.sh` validates IDs listed in `Tests/required-cases.txt`.
 - Docstring coverage gate:
   - `scripts/check-docstring-coverage.sh --min 80 Sources Tests`.
-- Shell helper layer:
+- These gates run from Makefile targets and are part of the expected CI quality checks.
+- Shared shell test helpers:
   - `Tests/shell/lib/testlib.sh` contains shared assertions and wait helpers.
   - `Tests/shell/lib/notify-test-helpers.sh` contains shared fake writers, temp-dir helpers, and execute payload extraction.
-- These gates run from Makefile targets and are part of the expected CI quality checks.
