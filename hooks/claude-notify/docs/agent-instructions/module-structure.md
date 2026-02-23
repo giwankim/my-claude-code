@@ -31,6 +31,6 @@ hooks/claude-notify/
 
 ## Structure Rules
 
-- Keep core logic in `Sources/NotifyCore`.
-- Keep `Sources/ClaudeNotify/main.swift` thin and focused on wiring/entrypoint behavior.
-- Keep `claude-notify.app` as a committed skeleton only; binary and code-sign outputs are build artifacts.
+- Core logic belongs in `Sources/NotifyCore`.
+- `Sources/ClaudeNotify/main.swift` must stay thin and focused on wiring/entrypoint behavior.
+- Treat `claude-notify.app` as a committed skeleton only; binary and code-sign outputs are build artifacts.
