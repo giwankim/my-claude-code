@@ -4,15 +4,15 @@
 
 - A Swift binary (`claude-notify`) that posts notifications and manages sender spoofing behavior.
 - A shell hook entrypoint (`notify.sh`) for Claude hook execution.
-- Test and quality gates for unit, integration, and shell e2e behavior.
+- Test and quality gates for unit, integration, and e2e behavior (Swift + shell).
 
 ## Directory layout
 
 - `Makefile`: module-local build/test/check entrypoints.
 - `Package.swift`: Swift package definition.
 - `Sources/`: production Swift sources.
-- `Tests/`: Swift unit and integration tests.
-- `tests/`: shell integration and e2e test scripts.
+- `Tests/`: Swift unit/integration tests and required case manifest.
+- `tests/`: shell unit/integration/e2e suites and shared shell test helpers.
 - `scripts/`: required check scripts used by `make` targets.
 - `notify.sh`: canonical hook script entrypoint.
 - `test-claude-notify.sh`: module-local shell test runner.
@@ -36,6 +36,8 @@ make test-integration
 make test-e2e
 make test
 ```
+
+`make test-unit` runs both Swift unit tests and shell unit tests (`tests/shell/unit/run.sh`).
 
 From module directory (`hooks/claude-notify`):
 
@@ -71,10 +73,12 @@ This script accepts:
 - `NOTIFY_SENDER_MODE`: `off|auto|required` (default `auto`).
 - `NOTIFY_SENDER_BUNDLE_ID`: spoof sender bundle ID override (default `com.gwk.claude-notify`).
 - `NOTIFY_SENDER_APP_PATH`: spoof sender app bundle path override (default `claude-notify.app` next to `notify.sh`).
-- `NOTIFY_ACTIVATE_BUNDLE_ID`: optional app bundle activated on click (default auto-infers frontmost app when running in tmux).
-- `NOTIFY_ACTIVATE_OSASCRIPT_BIN`: override `osascript` path used for tmux click-activate inference (default `/usr/bin/osascript`).
+- `NOTIFY_ACTIVATE_BUNDLE_ID`: optional app bundle activated on click (default auto-infers frontmost app at send time).
+- `NOTIFY_ACTIVATE_OSASCRIPT_BIN`: override `osascript` path used for frontmost-app activate inference (default `/usr/bin/osascript`).
 - `NOTIFY_TMUX_BIN`: override tmux binary path.
 - `NOTIFY_TMUX_REDIRECT_SCRIPT`: override tmux click redirect helper path (default `tmux-redirect.sh` next to `notify.sh`).
+- `NOTIFY_DEBUG_LOG`: enable debug logging to a file path.
+- `NOTIFY_TMUX_REDIRECT_LOG`: override tmux-redirect helper debug log path (defaults to `NOTIFY_DEBUG_LOG` when set).
 - `NOTIFY_ISOLATE_HELPER_BUNDLE_ID`: helper isolation toggle (default `1`).
 - `NOTIFY_ALLOW_NONISOLATED_RETRY`: fallback behavior toggle (default `0`).
 - `NOTIFY_OSASCRIPT_BIN`: override `osascript` path for delivery fallback when `UNUserNotificationCenter` is unavailable.
@@ -88,7 +92,9 @@ This script accepts:
   - Notification still posts, but execute action is skipped.
   - Ensure `$TMUX`, `$TMUX_PANE`, and tmux client context are available.
 - Click does not foreground terminal app:
-  - In tmux mode, `notify.sh` infers `-activate` from the frontmost app at send time.
+  - `notify.sh` infers the frontmost app bundle at send time and uses it for click activation.
+  - In tmux mode, activation is applied by `tmux-redirect.sh` after pane switching.
+  - Outside tmux, activation is forwarded as native `-activate`.
   - Override explicitly with `NOTIFY_ACTIVATE_BUNDLE_ID` if needed.
 - Sender spoof errors:
   - Use `NOTIFY_SENDER_MODE=off` to disable spoofing.
@@ -107,4 +113,7 @@ This script accepts:
   - `scripts/check-required-cases.sh` validates IDs listed in `Tests/required-cases.txt`.
 - Docstring coverage gate:
   - `scripts/check-docstring-coverage.sh --min 80 Sources Tests`.
+- Shell helper layer:
+  - `tests/shell/lib/testlib.sh` contains shared assertions and wait helpers.
+  - `tests/shell/lib/notify-test-helpers.sh` contains shared fake writers, temp-dir helpers, and execute payload extraction.
 - These gates run from Makefile targets and are part of the expected CI quality checks.

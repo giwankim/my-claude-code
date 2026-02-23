@@ -1,0 +1,154 @@
+#!/bin/sh
+
+register_tmp_dir() {
+  dir="$1"
+  TEST_TMP_DIRS="$TEST_TMP_DIRS $dir"
+}
+
+make_case_tmp_dir() {
+  case_id="$1"
+  dir="/tmp/claude-notify-test-${case_id}.$$"
+  register_tmp_dir "$dir"
+  mkdir -p "$dir"
+  printf '%s\n' "$dir"
+}
+
+cleanup_registered_tmp_dirs() {
+  for dir in $TEST_TMP_DIRS; do
+    rm -rf "$dir"
+  done
+}
+
+write_fake_notify() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_NOTIFY_SCRIPT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
+  i=$((i + 1))
+done
+if [ -n "${NOTIFY_ENV_LOG:-}" ]; then
+  printf '%s\n' "${CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY:-}" > "$NOTIFY_ENV_LOG"
+fi
+exit 0
+FAKE_NOTIFY_SCRIPT
+  chmod +x "$script_path"
+}
+
+write_fake_origin_exec() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_ORIGIN_SCRIPT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$ORIGIN_ARGS_LOG"
+  i=$((i + 1))
+done
+printf '%s\n' "${CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID:-}" > "$ORIGIN_ISOLATE_LOG"
+printf '%s\n' "${CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY:-}" > "$ORIGIN_ALLOW_RETRY_LOG"
+exit 0
+FAKE_ORIGIN_SCRIPT
+  chmod +x "$script_path"
+}
+
+write_fake_osascript_success() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_OSASCRIPT_SUCCESS'
+#!/bin/sh
+if [ -n "${OSASCRIPT_ARGS_LOG:-}" ]; then
+  i=0
+  for arg in "$@"; do
+    printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
+    i=$((i + 1))
+  done
+fi
+case "${2:-}" in
+  *"id of app (path to frontmost application as text)"*)
+    printf '%s\n' "com.jetbrains.intellij"
+    ;;
+esac
+exit 0
+FAKE_OSASCRIPT_SUCCESS
+  chmod +x "$script_path"
+}
+
+write_failing_osascript() {
+  script_path="$1"
+  cat > "$script_path" <<'FAILING_OSASCRIPT_SCRIPT'
+#!/bin/sh
+if [ -n "${OSASCRIPT_ARGS_LOG:-}" ]; then
+  i=0
+  for arg in "$@"; do
+    printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
+    i=$((i + 1))
+  done
+fi
+printf '%s\n' "simulated osascript failure" >&2
+exit 1
+FAILING_OSASCRIPT_SCRIPT
+  chmod +x "$script_path"
+}
+
+write_fake_frontmost_osascript() {
+  script_path="$1"
+  cat > "$script_path" <<'FAKE_FRONTMOST_OSASCRIPT'
+#!/bin/sh
+if [ -n "${ACTIVATE_OSASCRIPT_ARGS_LOG:-}" ]; then
+  i=0
+  for arg in "$@"; do
+    printf '[%d]=%s\n' "$i" "$arg" >> "$ACTIVATE_OSASCRIPT_ARGS_LOG"
+    i=$((i + 1))
+  done
+fi
+case "${2:-}" in
+  *"id of app (path to frontmost application as text)"*)
+    printf '%s\n' "com.jetbrains.intellij"
+    ;;
+esac
+exit 0
+FAKE_FRONTMOST_OSASCRIPT
+  chmod +x "$script_path"
+}
+
+extract_execute_payload() {
+  args_log="$1"
+  awk '
+    /\]=-execute$/ {
+      if (getline > 0) {
+        sub(/^\[[0-9]+\]=/, "", $0)
+        print $0
+        exit
+      }
+    }
+  ' "$args_log"
+}
+
+kill_pid_from_file() {
+  pid_file="$1"
+  expected_name="${2:-}"
+  [ -f "$pid_file" ] || return 1
+  pid=$(cat "$pid_file" 2>/dev/null)
+  case "$pid" in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+  esac
+  [ "$pid" -gt 0 ] 2>/dev/null || return 1
+  if [ -n "$expected_name" ]; then
+    kill -0 "$pid" 2>/dev/null || return 1
+    proc=$(ps -p "$pid" -o comm= 2>/dev/null | awk 'NR==1 {print $1}')
+    [ "$proc" = "$expected_name" ] || return 1
+  fi
+  kill "$pid" 2>/dev/null
+}
+
+drain_pid_file_if_present() {
+  pid_file="$1"
+  max_tries="${2:-20}"
+  expected_name="${3:-}"
+  if wait_for_pid_file "$pid_file" "$max_tries"; then
+    kill_pid_from_file "$pid_file" "$expected_name" >/dev/null 2>&1 || true
+    wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true
+  fi
+}

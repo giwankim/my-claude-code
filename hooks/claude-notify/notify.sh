@@ -27,7 +27,7 @@ shell_quote() {
 }
 
 # Best-effort send-time inference; click-time foreground app may differ.
-infer_tmux_activate_bundle_id() {
+infer_frontmost_activate_bundle_id() {
   [ -x "$ACTIVATE_OSASCRIPT_BIN" ] || return
   "$ACTIVATE_OSASCRIPT_BIN" -e 'id of app (path to frontmost application as text)' 2>/dev/null | tr -d '\r'
 }
@@ -42,6 +42,7 @@ log_debug "notify.sh start tmux=${TMUX:-<empty>} pane=${TMUX_PANE:-<empty>} term
 
 notify_run() {
   ACTIVATE_OVERRIDE="${NOTIFY_ACTIVATE_OVERRIDE-$ACTIVATE_BUNDLE_ID}"
+  log_debug "notify_run activate_override=${ACTIVATE_OVERRIDE:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>}"
   set -- "$@" \
     -timeout "$NOTIFY_TIMEOUT" \
     -sender-mode "$SENDER_MODE" \
@@ -54,6 +55,25 @@ notify_run() {
   fi
   CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
     CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@"
+}
+
+tmux_notify() {
+  subtitle="$1"
+  execute_cmd="$2"
+
+  set -- -title "Claude Code"
+  if [ -n "$subtitle" ]; then
+    set -- "$@" -subtitle "$subtitle"
+  fi
+  set -- "$@" \
+    -message "$MESSAGE" \
+    -sound default \
+    -group "claude-code"
+  if [ -n "$execute_cmd" ]; then
+    set -- "$@" -execute "$execute_cmd"
+  fi
+
+  NOTIFY_ACTIVATE_OVERRIDE="" notify_run "$@" &
 }
 
 if [ -n "$TMUX" ]; then
@@ -98,7 +118,7 @@ if [ -n "$TMUX" ]; then
           PANE_TARGET_ID="$TARGET_PANE"
         fi
         if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
-          ACTIVATE_BUNDLE_ID="$(infer_tmux_activate_bundle_id)"
+          ACTIVATE_BUNDLE_ID="$(infer_frontmost_activate_bundle_id)"
           log_debug "inferred activate bundle id in tmux mode: ${ACTIVATE_BUNDLE_ID:-<empty>}"
         fi
         if [ -n "$PANE_TARGET_ID" ] && [ -n "$SOCKET" ] && [ -x "$TMUX_REDIRECT_SCRIPT" ]; then
@@ -109,45 +129,31 @@ if [ -n "$TMUX" ]; then
           fi
 
           EXECUTE_CMD="$(shell_quote "$TMUX_REDIRECT_SCRIPT") $(shell_quote "$TMUX_BIN") $(shell_quote "$SOCKET") $(shell_quote "$PANE_TARGET_ID") $(shell_quote "$PANE_TARGET_INDEX") $(shell_quote "$CLIENT_NAME") $(shell_quote "$CLIENT_TTY") $(shell_quote "${ACTIVATE_BUNDLE_ID:-}") $(shell_quote "${TMUX_REDIRECT_LOG:-}")"
-          log_debug "execute payload prepared socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>}"
+          log_debug "execute payload prepared socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>}"
 
-          NOTIFY_ACTIVATE_OVERRIDE="" notify_run \
-            -title "Claude Code" \
-            -subtitle "$SESSION:$WINDOW_INDEX.$WINDOW_NAME" \
-            -message "$MESSAGE" \
-            -sound default \
-            -group "claude-code" \
-            -execute "$EXECUTE_CMD" &
+          tmux_notify "$SESSION:$WINDOW_INDEX.$WINDOW_NAME" "$EXECUTE_CMD"
         else
           printf '%s\n' "Warning: tmux redirect helper unavailable or tmux context incomplete; sending notification without execute action" >&2
           log_debug "tmux execute omitted: helper unavailable or incomplete context socket=${SOCKET:-<empty>} pane=${PANE_TARGET_ID:-<empty>}"
-          NOTIFY_ACTIVATE_OVERRIDE="" notify_run \
-            -title "Claude Code" \
-            -message "$MESSAGE" \
-            -sound default \
-            -group "claude-code" &
+          tmux_notify "" ""
         fi
         ;;
       *)
         printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
         log_debug "tmux execute omitted: unable to parse tmux info"
-        NOTIFY_ACTIVATE_OVERRIDE="" notify_run \
-          -title "Claude Code" \
-          -message "$MESSAGE" \
-          -sound default \
-          -group "claude-code" &
+        tmux_notify "" ""
         ;;
     esac
   else
     printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
     log_debug "tmux execute omitted: tmux info empty"
-    NOTIFY_ACTIVATE_OVERRIDE="" notify_run \
-      -title "Claude Code" \
-      -message "$MESSAGE" \
-      -sound default \
-      -group "claude-code" &
+    tmux_notify "" ""
   fi
 else
+  if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
+    ACTIVATE_BUNDLE_ID="$(infer_frontmost_activate_bundle_id)"
+    log_debug "inferred activate bundle id outside tmux: ${ACTIVATE_BUNDLE_ID:-<empty>}"
+  fi
   log_debug "running outside tmux; execute action omitted"
   notify_run \
     -title "Claude Code" \

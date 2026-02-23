@@ -3,6 +3,8 @@
 PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
 # shellcheck source=hooks/claude-notify/tests/shell/lib/testlib.sh
 . "$PROJECT_DIR/tests/shell/lib/testlib.sh"
+# shellcheck source=hooks/claude-notify/tests/shell/lib/notify-test-helpers.sh
+. "$PROJECT_DIR/tests/shell/lib/notify-test-helpers.sh"
 
 NOTIFY="$PROJECT_DIR/claude-notify.app/Contents/MacOS/claude-notify"
 SCRIPT="$PROJECT_DIR/notify.sh"
@@ -12,109 +14,15 @@ TEST_TMP_DIRS=""
 EXPECTED_NOTIFY_NAME=$(basename "$NOTIFY")
 export CLAUDE_NOTIFY_PID_FILE="$PID_FILE"
 
-register_tmp_dir() {
-  dir="$1"
-  TEST_TMP_DIRS="$TEST_TMP_DIRS $dir"
-}
-
-write_fake_notify() {
-  script_path="$1"
-  cat > "$script_path" <<'FAKE_NOTIFY_SCRIPT'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$NOTIFY_ARGS_LOG"
-  i=$((i + 1))
-done
-if [ -n "${NOTIFY_ENV_LOG:-}" ]; then
-  printf '%s\n' "${CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY:-}" > "$NOTIFY_ENV_LOG"
-fi
-exit 0
-FAKE_NOTIFY_SCRIPT
-  chmod +x "$script_path"
-}
-
-write_fake_origin_exec() {
-  script_path="$1"
-  cat > "$script_path" <<'FAKE_ORIGIN_SCRIPT'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$ORIGIN_ARGS_LOG"
-  i=$((i + 1))
-done
-printf '%s\n' "${CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID:-}" > "$ORIGIN_ISOLATE_LOG"
-printf '%s\n' "${CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY:-}" > "$ORIGIN_ALLOW_RETRY_LOG"
-exit 0
-FAKE_ORIGIN_SCRIPT
-  chmod +x "$script_path"
-}
-
-write_fake_osascript() {
-  script_path="$1"
-  cat > "$script_path" <<'FAKE_OSASCRIPT_SCRIPT'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
-  i=$((i + 1))
-done
-exit 0
-FAKE_OSASCRIPT_SCRIPT
-  chmod +x "$script_path"
-}
-
-write_failing_osascript() {
-  script_path="$1"
-  cat > "$script_path" <<'FAILING_OSASCRIPT_SCRIPT'
-#!/bin/sh
-i=0
-for arg in "$@"; do
-  printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
-  i=$((i + 1))
-done
-printf '%s\n' "simulated osascript failure" >&2
-exit 1
-FAILING_OSASCRIPT_SCRIPT
-  chmod +x "$script_path"
-}
-
-is_expected_notify_pid() {
-  pid="$1"
-  case "$pid" in
-    ''|*[!0-9]*)
-      return 1
-      ;;
-  esac
-  [ "$pid" -gt 0 ] 2>/dev/null || return 1
-  kill -0 "$pid" 2>/dev/null || return 1
-  proc=$(ps -p "$pid" -o comm= 2>/dev/null | awk 'NR==1 {print $1}')
-  [ "$proc" = "$EXPECTED_NOTIFY_NAME" ]
-}
-
-kill_pid_from_file() {
-  pid_file="$1"
-  [ -f "$pid_file" ] || return 1
-  pid=$(cat "$pid_file" 2>/dev/null)
-  is_expected_notify_pid "$pid" || return 1
-  kill "$pid" 2>/dev/null
-}
-
-drain_pid_file_if_present() {
-  pid_file="$1"
-  max_tries="${2:-20}"
-  if wait_for_pid_file "$pid_file" "$max_tries"; then
-    kill_pid_from_file "$pid_file" >/dev/null 2>&1 || true
-    wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true
-  fi
+drain_notify_pid_file() {
+  max_tries="${1:-20}"
+  drain_pid_file_if_present "$PID_FILE" "$max_tries" "$EXPECTED_NOTIFY_NAME"
 }
 
 cleanup() {
-  kill_pid_from_file "$PID_FILE" >/dev/null 2>&1 || true
+  kill_pid_from_file "$PID_FILE" "$EXPECTED_NOTIFY_NAME" >/dev/null 2>&1 || true
   rm -f "$PID_FILE" "$RELAUNCH_MARKER"
-  for dir in $TEST_TMP_DIRS; do
-    rm -rf "$dir"
-  done
+  cleanup_registered_tmp_dirs
 }
 trap cleanup EXIT
 
@@ -190,7 +98,7 @@ else
 fi
 
 case_start "I108" "Auto sender missing bundle falls back"
-err=$("$NOTIFY" -message "sender-auto-fallback" -sender-mode auto -sender-bundle-id "com.example.__missing_sender__" -timeout 1 2>&1 >/dev/null)
+err=$(CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "sender-auto-fallback" -sender-mode auto -sender-bundle-id "com.example.__missing_sender__" -timeout 1 2>&1 >/dev/null)
 rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "I108" "auto sender mode falls back and exits 0"
@@ -204,7 +112,7 @@ else
 fi
 
 case_start "I109" "Off sender mode ignores missing bundle"
-"$NOTIFY" -message "sender-off" -sender-mode off -sender-bundle-id "com.example.__missing_sender__" -timeout 1 2>/dev/null
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "sender-off" -sender-mode off -sender-bundle-id "com.example.__missing_sender__" -timeout 1 2>/dev/null
 rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "I109" "sender mode off ignores spoof settings"
@@ -216,7 +124,7 @@ case_start "I110" "notify.sh sender env override"
 if [ -x "$SCRIPT" ] || [ -f "$SCRIPT" ]; then
   NOTIFY_SENDER_MODE=off NOTIFY_SENDER_BUNDLE_ID="com.example.__missing_sender__" "$SCRIPT" "notify.sh sender override test" 2>/dev/null
   rc=$?
-  drain_pid_file_if_present "$PID_FILE" 20
+  drain_notify_pid_file 20
   if [ "$rc" -eq 0 ]; then
     pass "I110" "notify.sh accepts sender env overrides"
   else
@@ -241,7 +149,7 @@ else
 fi
 
 case_start "I112" "Off mode ignores invalid sender app path"
-"$NOTIFY" -message "sender-off-bad-path" -sender-mode off -sender-app-path "/tmp/does-not-exist-sender.app" -timeout 1 2>/dev/null
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$NOTIFY" -message "sender-off-bad-path" -sender-mode off -sender-app-path "/tmp/does-not-exist-sender.app" -timeout 1 2>/dev/null
 rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "I112" "off mode ignores invalid sender app path"
@@ -314,9 +222,7 @@ case "$HELPER_IDENTIFIER" in
 esac
 
 case_start "I115" "Auto isolated spoof strict fallback avoids non-isolated retry"
-TMP_DIR="/tmp/claude-notify-test-i115.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I115")
 FAKE_ORIGIN="$TMP_DIR/fake-origin.sh"
 ORIGIN_ARGS_LOG="$TMP_DIR/origin-args.log"
 ORIGIN_ISOLATE_LOG="$TMP_DIR/origin-isolate.log"
@@ -326,7 +232,7 @@ err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_
   ORIGIN_ARGS_LOG="$ORIGIN_ARGS_LOG" ORIGIN_ISOLATE_LOG="$ORIGIN_ISOLATE_LOG" ORIGIN_ALLOW_RETRY_LOG="$ORIGIN_ALLOW_RETRY_LOG" \
   "$NOTIFY" -message "sender-auto-isolated-strict" -sender-mode auto -spoofed-run -origin-exec "$FAKE_ORIGIN" -timeout 2 2>&1 >/dev/null)
 rc=$?
-drain_pid_file_if_present "$PID_FILE" 20
+drain_notify_pid_file 20
 if [ "$rc" -eq 0 ]; then
   pass "I115" "auto isolated spoof strict fallback exits 0"
 else
@@ -356,9 +262,7 @@ if ! echo "$err" | grep -q "launched fallback notification without spoof"; then
 fi
 
 case_start "I116" "Auto isolated spoof opt-in retry enables non-isolated retry"
-TMP_DIR="/tmp/claude-notify-test-i116.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I116")
 FAKE_ORIGIN="$TMP_DIR/fake-origin.sh"
 ORIGIN_ARGS_LOG="$TMP_DIR/origin-args.log"
 ORIGIN_ISOLATE_LOG="$TMP_DIR/origin-isolate.log"
@@ -368,7 +272,7 @@ err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_
   ORIGIN_ARGS_LOG="$ORIGIN_ARGS_LOG" ORIGIN_ISOLATE_LOG="$ORIGIN_ISOLATE_LOG" ORIGIN_ALLOW_RETRY_LOG="$ORIGIN_ALLOW_RETRY_LOG" \
   "$NOTIFY" -message "sender-auto-isolated-retry" -sender-mode auto -spoofed-run -origin-exec "$FAKE_ORIGIN" -timeout 2 2>&1 >/dev/null)
 rc=$?
-drain_pid_file_if_present "$PID_FILE" 20
+drain_notify_pid_file 20
 if [ "$rc" -eq 0 ]; then
   pass "I116" "auto isolated spoof opt-in retry exits 0"
 else
@@ -409,9 +313,7 @@ if ! echo "$err" | grep -q "retrying without isolated helper bundle id"; then
 fi
 
 case_start "I117" "notify.sh tmux binary override"
-TMP_DIR="/tmp/claude-notify-test.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I117")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 FAKE_REDIRECT="$TMP_DIR/fake-tmux-redirect.sh"
@@ -453,15 +355,7 @@ if grep -q "^display-message -t %9 -p " "$TMUX_LOG"; then
 else
   fail "I117" "notify.sh did not use NOTIFY_TMUX_BIN for tmux metadata lookup"
 fi
-EXECUTE_PAYLOAD=$(awk '
-  /\]=-execute$/ {
-    if (getline > 0) {
-      sub(/^\[[0-9]+\]=/, "", $0)
-      print $0
-      exit
-    }
-  }
-' "$ARGS_LOG")
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
 if [ -n "$EXECUTE_PAYLOAD" ]; then
   pass "I117" "notify.sh captured execute payload"
 else
@@ -496,9 +390,7 @@ fi
 rm -rf "$TMP_DIR"
 
 case_start "I118" "notify.sh tmux metadata failure omits execute action"
-TMP_DIR="/tmp/claude-notify-test-fail.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I118")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
@@ -532,9 +424,7 @@ fi
 rm -rf "$TMP_DIR"
 
 case_start "I119" "notify.sh default sender mode is auto"
-TMP_DIR="/tmp/claude-notify-test-default-mode.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I119")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 write_fake_notify "$FAKE_NOTIFY"
@@ -555,9 +445,7 @@ fi
 rm -rf "$TMP_DIR"
 
 case_start "I120" "notify.sh sender mode env override auto"
-TMP_DIR="/tmp/claude-notify-test-auto-mode.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I120")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 write_fake_notify "$FAKE_NOTIFY"
@@ -578,9 +466,7 @@ fi
 rm -rf "$TMP_DIR"
 
 case_start "I121" "notify.sh default non-isolated retry env is 0"
-TMP_DIR="/tmp/claude-notify-test-default-retry.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I121")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 ENV_LOG="$TMP_DIR/notify-env.log"
@@ -602,16 +488,14 @@ fi
 rm -rf "$TMP_DIR"
 
 case_start "I122" "Authorization failure falls back to AppleScript delivery"
-TMP_DIR="/tmp/claude-notify-test-osascript-fallback.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I122")
 FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
 OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
-write_fake_osascript "$FAKE_OSASCRIPT"
+write_fake_osascript_success "$FAKE_OSASCRIPT"
 err=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" \
   "$NOTIFY" -title "fallback-title" -subtitle "fallback-subtitle" -message "fallback-message" -timeout 5 2>&1 >/dev/null)
 rc=$?
-drain_pid_file_if_present "$PID_FILE" 20
+drain_notify_pid_file 20
 if [ "$rc" -eq 0 ]; then
   pass "I122" "authorization failure fallback exits 0"
 else
@@ -638,7 +522,7 @@ write_failing_osascript "$FAILING_OSASCRIPT"
 err_fail=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAILING_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_FAIL_LOG" \
   "$NOTIFY" -title "fallback-fail-title" -subtitle "fallback-fail-subtitle" -message "fallback-fail-message" -timeout 10 2>&1 >/dev/null)
 rc_fail=$?
-drain_pid_file_if_present "$PID_FILE" 20
+drain_notify_pid_file 20
 if [ "$rc_fail" -eq 1 ]; then
   pass "I122" "authorization failure exits 1 when AppleScript fallback fails"
 else
@@ -657,9 +541,7 @@ fi
 rm -rf "$TMP_DIR"
 
 case_start "I123" "notify.sh forwards explicit activate bundle override"
-TMP_DIR="/tmp/claude-notify-test-activate-infer.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I123")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 write_fake_notify "$FAKE_NOTIFY"
@@ -679,33 +561,38 @@ else
 fi
 rm -rf "$TMP_DIR"
 
-case_start "I124" "notify.sh omits activate when explicit override is unavailable"
-TMP_DIR="/tmp/claude-notify-test-activate-omit.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+case_start "I124" "notify.sh infers activate bundle outside tmux when explicit override is unavailable"
+TMP_DIR=$(make_case_tmp_dir "I124")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
 write_fake_notify "$FAKE_NOTIFY"
-TMUX="" TERM_PROGRAM="iTerm.app" NOTIFY_ACTIVATE_BUNDLE_ID="" \
-  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "activate omission test" 2>/dev/null
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+TMUX="" TERM_PROGRAM="JetBrains-JediTerm" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "activate inference outside tmux test" 2>/dev/null
 rc=$?
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
-  pass "I124" "notify.sh activate omission probe exits 0"
+  pass "I124" "notify.sh activate inference probe exits 0"
 else
-  fail "I124" "notify.sh activate omission probe exited $rc"
+  fail "I124" "notify.sh activate inference probe exited $rc"
 fi
-if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
-  fail "I124" "notify.sh unexpectedly forwarded -activate without explicit override"
+if awk '/\]=-activate$/{getline; if ($0 ~ /\]=com.jetbrains.intellij$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+  pass "I124" "notify.sh forwards inferred activate bundle id outside tmux"
 else
-  pass "I124" "notify.sh omits -activate by default"
+  fail "I124" "notify.sh did not forward inferred activate bundle id outside tmux"
+fi
+if grep -q "id of app (path to frontmost application as text)" "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  pass "I124" "notify.sh invokes frontmost-app osascript probe outside tmux"
+else
+  fail "I124" "notify.sh did not invoke frontmost-app osascript probe outside tmux"
 fi
 rm -rf "$TMP_DIR"
 
 case_start "I125" "notify.sh click execute payload redirects to expected tmux pane"
-TMP_DIR="/tmp/claude-notify-test-click-exec.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I125")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
@@ -731,15 +618,7 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I125" "notify.sh tmux click payload probe exited $rc"
 fi
-EXECUTE_PAYLOAD=$(awk '
-  /\]=-execute$/ {
-    if (getline > 0) {
-      sub(/^\[[0-9]+\]=/, "", $0)
-      print $0
-      exit
-    }
-  }
-' "$ARGS_LOG")
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
 if [ -n "$EXECUTE_PAYLOAD" ]; then
   pass "I125" "notify.sh captured execute payload for click redirect"
 else
@@ -796,9 +675,7 @@ else
 fi
 
 case_start "I127" "notify.sh click execute payload falls back when client-targeted switch fails"
-TMP_DIR="/tmp/claude-notify-test-click-fallback.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+TMP_DIR=$(make_case_tmp_dir "I127")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
@@ -850,15 +727,7 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I127" "notify.sh tmux fallback payload probe exited $rc"
 fi
-EXECUTE_PAYLOAD=$(awk '
-  /\]=-execute$/ {
-    if (getline > 0) {
-      sub(/^\[[0-9]+\]=/, "", $0)
-      print $0
-      exit
-    }
-  }
-' "$ARGS_LOG")
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
 if [ -n "$EXECUTE_PAYLOAD" ]; then
   pass "I127" "notify.sh captured execute payload with fallback"
 else
@@ -889,10 +758,8 @@ else
 fi
 rm -rf "$TMP_DIR"
 
-case_start "I128" "notify.sh carries tmux activate bundle in redirect payload without native -activate"
-TMP_DIR="/tmp/claude-notify-test-activate-frontmost.$$"
-register_tmp_dir "$TMP_DIR"
-mkdir -p "$TMP_DIR"
+case_start "I128" "notify.sh carries inferred IntelliJ tmux activate bundle in redirect payload without native -activate"
+TMP_DIR=$(make_case_tmp_dir "I128")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
@@ -909,23 +776,8 @@ if [ "$1" = "display-message" ]; then
 fi
 exit 0
 CASE_I128_TMUX
-cat > "$FAKE_ACTIVATE_OSASCRIPT" <<'CASE_I128_OSASCRIPT'
-#!/bin/sh
-if [ -n "${ACTIVATE_OSASCRIPT_ARGS_LOG:-}" ]; then
-  i=0
-  for arg in "$@"; do
-    printf '[%d]=%s\n' "$i" "$arg" >> "$ACTIVATE_OSASCRIPT_ARGS_LOG"
-    i=$((i + 1))
-  done
-fi
-case "${2:-}" in
-  *"id of app (path to frontmost application as text)"*)
-    printf '%s\n' "com.mitchellh.ghostty"
-    ;;
-esac
-exit 0
-CASE_I128_OSASCRIPT
-chmod +x "$FAKE_TMUX" "$FAKE_ACTIVATE_OSASCRIPT"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+chmod +x "$FAKE_TMUX"
 TMUX="/tmp/fake-socket,333,0" TMUX_PANE="%8" TERM_PROGRAM="tmux" NOTIFY_ACTIVATE_BUNDLE_ID="" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" \
   NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "activate frontmost inference test" 2>/dev/null
@@ -941,20 +793,12 @@ if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
 else
   pass "I128" "notify.sh omits native -activate in tmux mode"
 fi
-if grep -q "tmux-redirect.sh'.*'com.mitchellh.ghostty'" "$ARGS_LOG"; then
-  pass "I128" "notify.sh passes inferred activate bundle to tmux redirect helper"
+if grep -q "tmux-redirect.sh'.*'com.jetbrains.intellij'" "$ARGS_LOG"; then
+  pass "I128" "notify.sh passes inferred IntelliJ activate bundle to tmux redirect helper"
 else
-  fail "I128" "notify.sh did not pass inferred activate bundle to tmux redirect helper"
+  fail "I128" "notify.sh did not pass inferred IntelliJ activate bundle to tmux redirect helper"
 fi
-EXECUTE_PAYLOAD=$(awk '
-  /\]=-execute$/ {
-    if (getline > 0) {
-      sub(/^\[[0-9]+\]=/, "", $0)
-      print $0
-      exit
-    }
-  }
-' "$ARGS_LOG")
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
 if [ -n "$EXECUTE_PAYLOAD" ]; then
   pass "I128" "notify.sh captured execute payload for tmux activate path"
 else
@@ -970,10 +814,38 @@ else
 fi
 if grep -q '\[1\]=on run argv' "$ACTIVATE_OSASCRIPT_ARGS_LOG" \
   && grep -q '\[2\]=--' "$ACTIVATE_OSASCRIPT_ARGS_LOG" \
-  && grep -q '\[3\]=com.mitchellh.ghostty' "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  && grep -q '\[3\]=com.jetbrains.intellij' "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
   pass "I128" "tmux redirect passes activate bundle via osascript argv"
 else
   fail "I128" "tmux redirect did not use argv-based osascript activate call"
+fi
+rm -rf "$TMP_DIR"
+
+case_start "I129" "notify.sh outside tmux omits activate when inference probe is unavailable"
+TMP_DIR=$(make_case_tmp_dir "I129")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+MISSING_ACTIVATE_OSASCRIPT="$TMP_DIR/missing-activate-osascript.sh"
+write_fake_notify "$FAKE_NOTIFY"
+TMUX="" TERM_PROGRAM="JetBrains-JediTerm" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$MISSING_ACTIVATE_OSASCRIPT" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  "$SCRIPT" "activate probe unavailable test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I129" "notify.sh outside-tmux unavailable probe exits 0"
+else
+  fail "I129" "notify.sh outside-tmux unavailable probe exited $rc"
+fi
+if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
+  fail "I129" "notify.sh unexpectedly forwarded -activate when probe was unavailable"
+else
+  pass "I129" "notify.sh omits -activate when outside-tmux probe is unavailable"
+fi
+if grep -q "activate probe unavailable test" "$ARGS_LOG"; then
+  pass "I129" "notify.sh still forwards notification payload when probe is unavailable"
+else
+  fail "I129" "notify.sh did not forward notification payload when probe is unavailable"
 fi
 rm -rf "$TMP_DIR"
 
