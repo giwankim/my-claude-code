@@ -542,13 +542,17 @@ write_fake_notify "$FAKE_NOTIFY"
 TMUX="" TERM_PROGRAM="" NOTIFY_ACTIVATE_BUNDLE_ID="com.googlecode.iterm2" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "activate explicit test" 2>/dev/null
 rc=$?
-wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
   pass "I123" "notify.sh explicit activate probe exits 0"
 else
   fail "I123" "notify.sh explicit activate probe exited $rc"
 fi
-if awk '/\]=-activate$/{getline; if ($0 ~ /\]=com.googlecode.iterm2$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+_i=0
+while [ "$_i" -lt 20 ] && ! awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.googlecode.iterm2$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; do
+  sleep 0.1
+  _i=$((_i + 1))
+done
+if awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.googlecode.iterm2$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; then
   pass "I123" "notify.sh forwards explicit activate bundle id"
 else
   fail "I123" "notify.sh did not forward explicit activate bundle id"
@@ -566,13 +570,17 @@ TMUX="" TERM_PROGRAM="JetBrains-JediTerm" NOTIFY_ACTIVATE_BUNDLE_ID="" \
   NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" "activate inference outside tmux test" 2>/dev/null
 rc=$?
-wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
   pass "I124" "notify.sh activate inference probe exits 0"
 else
   fail "I124" "notify.sh activate inference probe exited $rc"
 fi
-if awk '/\]=-activate$/{getline; if ($0 ~ /\]=com.jetbrains.intellij$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+_i=0
+while [ "$_i" -lt 20 ] && ! awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.jetbrains.intellij$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; do
+  sleep 0.1
+  _i=$((_i + 1))
+done
+if awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.jetbrains.intellij$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; then
   pass "I124" "notify.sh forwards inferred activate bundle id outside tmux"
 else
   fail "I124" "notify.sh did not forward inferred activate bundle id outside tmux"
