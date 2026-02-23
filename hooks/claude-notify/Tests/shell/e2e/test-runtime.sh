@@ -196,7 +196,15 @@ else
 fi
 
 case_start "E010" "Auto spoofed post failure triggers fallback"
-err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 "$NOTIFY" -message "sender-auto-forced-failure" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
+TMP_DIR=$(make_case_tmp_dir "E010")
+FAKE_ORIGIN="$TMP_DIR/fake-origin.sh"
+ORIGIN_ARGS_LOG="$TMP_DIR/origin-args.log"
+ORIGIN_ISOLATE_LOG="$TMP_DIR/origin-isolate.log"
+ORIGIN_ALLOW_RETRY_LOG="$TMP_DIR/origin-allow-retry.log"
+write_fake_origin_exec "$FAKE_ORIGIN"
+err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 \
+  ORIGIN_ARGS_LOG="$ORIGIN_ARGS_LOG" ORIGIN_ISOLATE_LOG="$ORIGIN_ISOLATE_LOG" ORIGIN_ALLOW_RETRY_LOG="$ORIGIN_ALLOW_RETRY_LOG" \
+  "$NOTIFY" -message "sender-auto-forced-failure" -sender-mode auto -spoofed-run -origin-exec "$FAKE_ORIGIN" -timeout 2 2>&1 >/dev/null)
 rc=$?
 drain_pid_file_if_present "$PID_FILE" 20 "$EXPECTED_NOTIFY_NAME"
 if [ "$rc" -eq 0 ]; then
@@ -204,10 +212,15 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "E010" "auto spoofed post failure exited $rc (expected 0)"
 fi
-if echo "$err" | grep -q "launched fallback notification without spoof"; then
-  pass "E010" "auto spoofed post failure launched fallback"
+if wait_for_file "$ORIGIN_ARGS_LOG" 20 >/dev/null 2>&1 \
+  && awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=off$/) found=1} END{exit found?0:1}' "$ORIGIN_ARGS_LOG" \
+  && grep -q -- '\]=-fallback-run$' "$ORIGIN_ARGS_LOG"; then
+  pass "E010" "auto spoofed post failure launched fallback run without spoof"
 else
-  fail "E010" "auto spoofed post failure did not launch fallback"
+  fail "E010" "auto spoofed post failure did not launch expected fallback run"
+fi
+if ! echo "$err" | grep -q "launched fallback notification without spoof"; then
+  printf '%s\n' "E010 diagnostic: fallback warning text missing (non-fatal)" >&2
 fi
 
 case_start "E011" "Required spoofed post failure does not fallback"
