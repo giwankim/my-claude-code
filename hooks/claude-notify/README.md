@@ -11,8 +11,7 @@
 - `Makefile`: module-local build/test/check entrypoints.
 - `Package.swift`: Swift package definition.
 - `Sources/`: production Swift sources.
-- `Tests/`: Swift unit/integration tests and required case manifest.
-- `tests/`: shell unit/integration/e2e suites and shared shell test helpers.
+- `Tests/`: Swift unit/integration tests, required case manifest, and shell unit/integration/e2e suites.
 - `scripts/`: required check scripts used by `make` targets.
 - `notify.sh`: canonical hook script entrypoint.
 - `test-claude-notify.sh`: module-local shell test runner.
@@ -37,7 +36,7 @@ make test-e2e
 make test
 ```
 
-`make test-unit` runs both Swift unit tests and shell unit tests (`tests/shell/unit/run.sh`).
+`make test-unit` runs both Swift unit tests and shell unit tests (`Tests/shell/unit/run.sh`).
 
 From module directory (`hooks/claude-notify`):
 
@@ -114,6 +113,6 @@ This script accepts:
 - Docstring coverage gate:
   - `scripts/check-docstring-coverage.sh --min 80 Sources Tests`.
 - Shell helper layer:
-  - `tests/shell/lib/testlib.sh` contains shared assertions and wait helpers.
-  - `tests/shell/lib/notify-test-helpers.sh` contains shared fake writers, temp-dir helpers, and execute payload extraction.
+  - `Tests/shell/lib/testlib.sh` contains shared assertions and wait helpers.
+  - `Tests/shell/lib/notify-test-helpers.sh` contains shared fake writers, temp-dir helpers, and execute payload extraction.
 - These gates run from Makefile targets and are part of the expected CI quality checks.
