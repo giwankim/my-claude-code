@@ -603,6 +603,12 @@ func postNotification(args: NotifyArgs, delegate: NotificationDelegate) {
     return
   }
 
+  // Test hook: force post failure deterministically before async auth callback.
+  if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR"] == "1" {
+    handleDeliveryFailure(args: args, message: "failed to post notification: forced test failure")
+    return
+  }
+
   center.requestAuthorization(options: [.alert, .sound]) { granted, error in
     if !granted {
       if let error {
@@ -610,11 +616,6 @@ func postNotification(args: NotifyArgs, delegate: NotificationDelegate) {
       } else {
         handleDeliveryFailure(args: args, message: "notification authorization denied")
       }
-      return
-    }
-
-    if ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR"] == "1" {
-      handleDeliveryFailure(args: args, message: "failed to post notification: forced test failure")
       return
     }
 
