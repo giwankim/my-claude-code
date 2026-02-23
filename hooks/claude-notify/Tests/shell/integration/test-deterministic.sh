@@ -387,7 +387,6 @@ if grep -Fq "[0]=$FAKE_TMUX" "$REDIRECT_ARGS_LOG" \
 else
   fail "I117" "quoted execute payload did not preserve expected tmux metadata values"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I118" "notify.sh tmux metadata failure omits execute action"
 TMP_DIR=$(make_case_tmp_dir "I118")
@@ -421,7 +420,6 @@ if grep -q -- "-execute" "$ARGS_LOG"; then
 else
   pass "I118" "notify.sh tmux metadata failure omits execute action"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I119" "notify.sh default sender mode is auto"
 TMP_DIR=$(make_case_tmp_dir "I119")
@@ -442,7 +440,6 @@ if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=auto$/) found=1} END{exit found
 else
   fail "I119" "notify.sh did not forward default -sender-mode auto"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I120" "notify.sh sender mode env override auto"
 TMP_DIR=$(make_case_tmp_dir "I120")
@@ -463,7 +460,6 @@ if awk '/\]=-sender-mode$/{getline; if ($0 ~ /\]=auto$/) found=1} END{exit found
 else
   fail "I120" "notify.sh did not forward overridden -sender-mode auto"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I121" "notify.sh default non-isolated retry env is 0"
 TMP_DIR=$(make_case_tmp_dir "I121")
@@ -485,7 +481,6 @@ if [ -f "$ENV_LOG" ] && grep -qx "0" "$ENV_LOG"; then
 else
   fail "I121" "notify.sh did not export default CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY=0"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I122" "Authorization failure falls back to AppleScript delivery"
 TMP_DIR=$(make_case_tmp_dir "I122")
@@ -538,7 +533,6 @@ if echo "$err_fail" | grep -q "AppleScript fallback exited 1"; then
 else
   fail "I122" "fallback-fail path missing AppleScript failure warning"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I123" "notify.sh forwards explicit activate bundle override"
 TMP_DIR=$(make_case_tmp_dir "I123")
@@ -559,7 +553,6 @@ if awk '/\]=-activate$/{getline; if ($0 ~ /\]=com.googlecode.iterm2$/) found=1} 
 else
   fail "I123" "notify.sh did not forward explicit activate bundle id"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I124" "notify.sh infers activate bundle outside tmux when explicit override is unavailable"
 TMP_DIR=$(make_case_tmp_dir "I124")
@@ -589,7 +582,6 @@ if grep -q "id of app (path to frontmost application as text)" "$ACTIVATE_OSASCR
 else
   fail "I124" "notify.sh did not invoke frontmost-app osascript probe outside tmux"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I125" "notify.sh click execute payload redirects to expected tmux pane"
 TMP_DIR=$(make_case_tmp_dir "I125")
@@ -647,7 +639,6 @@ if grep -q "switch-client -c  -t" "$CLICK_TMUX_LOG"; then
 else
   pass "I125" "click execute payload uses non-empty client targets"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I126" "Built app bundle includes configured Claude icon asset"
 APP_INFO="$PROJECT_DIR/claude-notify.app/Contents/Info.plist"
@@ -756,7 +747,6 @@ if grep -q "list-clients -F #{client_name}" "$CLICK_TMUX_LOG" \
 else
   fail "I127" "fallback execute payload missing expected recovery steps"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I128" "notify.sh carries inferred IntelliJ tmux activate bundle in redirect payload without native -activate"
 TMP_DIR=$(make_case_tmp_dir "I128")
@@ -819,7 +809,6 @@ if grep -q '\[1\]=on run argv' "$ACTIVATE_OSASCRIPT_ARGS_LOG" \
 else
   fail "I128" "tmux redirect did not use argv-based osascript activate call"
 fi
-rm -rf "$TMP_DIR"
 
 case_start "I129" "notify.sh outside tmux omits activate when inference probe is unavailable"
 TMP_DIR=$(make_case_tmp_dir "I129")
@@ -847,6 +836,5 @@ if grep -q "activate probe unavailable test" "$ARGS_LOG"; then
 else
   fail "I129" "notify.sh did not forward notification payload when probe is unavailable"
 fi
-rm -rf "$TMP_DIR"
 
 finish

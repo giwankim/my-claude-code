@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# This file assumes testlib.sh is sourced first for wait_for_pid_file and
+# wait_for_pid_removed used by drain_pid_file_if_present.
+
 register_tmp_dir() {
   dir="$1"
   TEST_TMP_DIRS="$TEST_TMP_DIRS $dir"
@@ -52,25 +55,37 @@ FAKE_ORIGIN_SCRIPT
   chmod +x "$script_path"
 }
 
-write_fake_osascript_success() {
+write_fake_osascript() {
   script_path="$1"
-  cat > "$script_path" <<'FAKE_OSASCRIPT_SUCCESS'
+  log_env_var="$2"
+  cat > "$script_path" <<FAKE_OSASCRIPT
 #!/bin/sh
-if [ -n "${OSASCRIPT_ARGS_LOG:-}" ]; then
+log_path=\${$log_env_var:-}
+if [ -n "\$log_path" ]; then
   i=0
-  for arg in "$@"; do
-    printf '[%d]=%s\n' "$i" "$arg" >> "$OSASCRIPT_ARGS_LOG"
-    i=$((i + 1))
+  for arg in "\$@"; do
+    printf '[%d]=%s\n' "\$i" "\$arg" >> "\$log_path"
+    i=\$((i + 1))
   done
 fi
-case "${2:-}" in
+case "\${2:-}" in
   *"id of app (path to frontmost application as text)"*)
     printf '%s\n' "com.jetbrains.intellij"
     ;;
 esac
 exit 0
-FAKE_OSASCRIPT_SUCCESS
+FAKE_OSASCRIPT
   chmod +x "$script_path"
+}
+
+write_fake_osascript_success() {
+  script_path="$1"
+  write_fake_osascript "$script_path" "OSASCRIPT_ARGS_LOG"
+}
+
+write_fake_frontmost_osascript() {
+  script_path="$1"
+  write_fake_osascript "$script_path" "ACTIVATE_OSASCRIPT_ARGS_LOG"
 }
 
 write_failing_osascript() {
@@ -87,27 +102,6 @@ fi
 printf '%s\n' "simulated osascript failure" >&2
 exit 1
 FAILING_OSASCRIPT_SCRIPT
-  chmod +x "$script_path"
-}
-
-write_fake_frontmost_osascript() {
-  script_path="$1"
-  cat > "$script_path" <<'FAKE_FRONTMOST_OSASCRIPT'
-#!/bin/sh
-if [ -n "${ACTIVATE_OSASCRIPT_ARGS_LOG:-}" ]; then
-  i=0
-  for arg in "$@"; do
-    printf '[%d]=%s\n' "$i" "$arg" >> "$ACTIVATE_OSASCRIPT_ARGS_LOG"
-    i=$((i + 1))
-  done
-fi
-case "${2:-}" in
-  *"id of app (path to frontmost application as text)"*)
-    printf '%s\n' "com.jetbrains.intellij"
-    ;;
-esac
-exit 0
-FAKE_FRONTMOST_OSASCRIPT
   chmod +x "$script_path"
 }
 
@@ -147,6 +141,7 @@ drain_pid_file_if_present() {
   pid_file="$1"
   max_tries="${2:-20}"
   expected_name="${3:-}"
+  # Depends on wait_for_pid_file and wait_for_pid_removed from testlib.sh.
   if wait_for_pid_file "$pid_file" "$max_tries"; then
     kill_pid_from_file "$pid_file" "$expected_name" >/dev/null 2>&1 || true
     wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true

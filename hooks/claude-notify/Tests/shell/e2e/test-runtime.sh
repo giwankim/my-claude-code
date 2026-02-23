@@ -251,6 +251,12 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "E012" "notify.sh outside-tmux inference probe exited $rc"
 fi
+if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1 \
+  && grep -q 'id of app (path to frontmost application as text)' "$OSASCRIPT_LOG"; then
+  pass "E012" "notify.sh outside-tmux inference probe invoked deterministic frontmost-app osascript"
+else
+  fail "E012" "notify.sh outside-tmux inference probe missing deterministic frontmost-app osascript invocation"
+fi
 if grep -q "inferred activate bundle id outside tmux: com.jetbrains.intellij" "$DEBUG_LOG" \
   && grep -q "notify_run activate_override=com.jetbrains.intellij activate_bundle=com.jetbrains.intellij" "$DEBUG_LOG"; then
   pass "E012" "notify.sh outside-tmux debug log records inferred native activate path"
