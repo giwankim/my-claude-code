@@ -3,6 +3,8 @@
 # This file assumes testlib.sh is sourced first for wait_for_pid_file and
 # wait_for_pid_removed used by drain_pid_file_if_present.
 
+NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}'
+
 register_tmp_dir() {
   dir="$1"
   TEST_TMP_DIRS="$TEST_TMP_DIRS $dir"
@@ -103,6 +105,28 @@ printf '%s\n' "simulated osascript failure" >&2
 exit 1
 FAILING_OSASCRIPT_SCRIPT
   chmod +x "$script_path"
+}
+
+notify_tmux_display_message_format() {
+  notify_script="$1"
+  format=$(awk -F"'" '/^NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT=/{print $2; exit}' "$notify_script")
+  if [ -n "$format" ]; then
+    printf '%s\n' "$format"
+  else
+    printf '%s\n' "$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT"
+  fi
+}
+
+build_tmux_display_message_payload() {
+  session_name="$1"
+  window_index="$2"
+  window_name="$3"
+  pane_index="$4"
+  pane_id="$5"
+  client_name="$6"
+  client_tty="$7"
+  printf '%s|%s|%s|%s|%s|%s|%s\n' \
+    "$session_name" "$window_index" "$window_name" "$pane_index" "$pane_id" "$client_name" "$client_tty"
 }
 
 extract_execute_payload() {

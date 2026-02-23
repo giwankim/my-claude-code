@@ -62,6 +62,7 @@ FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
 ARGS_LOG="$TMP_DIR/notify-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
 write_fake_notify "$FAKE_NOTIFY"
 write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
 cat > "$FAKE_TMUX" <<'FAKE_TMUX_U019'
@@ -74,7 +75,8 @@ exit 0
 FAKE_TMUX_U019
 chmod +x "$FAKE_TMUX"
 TMUX="/tmp/fake-socket,999,0" TMUX_PANE="%42" NOTIFY_ACTIVATE_BUNDLE_ID="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
-  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "unit tmux execute test" 2>/dev/null
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" \
+  ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" "$SCRIPT" "unit tmux execute test" 2>/dev/null
 rc=$?
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 assert_rc_eq "U019" "$rc" 0 \
