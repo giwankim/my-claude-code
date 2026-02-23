@@ -23,6 +23,8 @@ Instructions for `/hooks/claude-notify` only.
 
 ## Detailed Instructions
 
+Links in this section are resolved relative to `hooks/claude-notify/AGENTS.md` (file-relative paths).
+
 - [Module Structure](docs/agent-instructions/module-structure.md)
 - [Build, Tests, And Quality Gates](docs/agent-instructions/build-test-quality.md)
 - [Conventions And Maintenance Rules](docs/agent-instructions/conventions-maintenance.md)
