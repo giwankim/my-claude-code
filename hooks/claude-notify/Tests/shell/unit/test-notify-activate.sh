@@ -1,0 +1,95 @@
+#!/bin/sh
+
+PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
+# shellcheck source=hooks/claude-notify/tests/shell/lib/testlib.sh
+. "$PROJECT_DIR/tests/shell/lib/testlib.sh"
+# shellcheck source=hooks/claude-notify/tests/shell/lib/notify-test-helpers.sh
+. "$PROJECT_DIR/tests/shell/lib/notify-test-helpers.sh"
+
+SCRIPT="$PROJECT_DIR/notify.sh"
+TEST_TMP_DIRS=""
+
+cleanup() {
+  cleanup_registered_tmp_dirs
+}
+trap cleanup EXIT
+
+case_start "U017" "notify.sh infers frontmost activate bundle outside tmux"
+TMP_DIR=$(make_case_tmp_dir "U017")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+TMUX="" NOTIFY_ACTIVATE_BUNDLE_ID="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  "$SCRIPT" "unit outside infer test" 2>/dev/null
+rc=$?
+wait_for_file "$ACTIVATE_OSASCRIPT_ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U017" "$rc" 0 \
+  "notify.sh outside-tmux inference probe exits 0" \
+  "notify.sh outside-tmux inference probe exited $rc"
+assert_file_contains "U017" "$ACTIVATE_OSASCRIPT_ARGS_LOG" "id of app (path to frontmost application as text)" \
+  "notify.sh probes frontmost app bundle outside tmux" \
+  "notify.sh did not probe frontmost app bundle outside tmux"
+
+case_start "U018" "notify.sh forwards inferred activate bundle outside tmux"
+TMP_DIR=$(make_case_tmp_dir "U018")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+TMUX="" NOTIFY_ACTIVATE_BUNDLE_ID="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  "$SCRIPT" "unit outside activate test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U018" "$rc" 0 \
+  "notify.sh outside-tmux activate forwarding probe exits 0" \
+  "notify.sh outside-tmux activate forwarding probe exited $rc"
+if awk '/\]=-activate$/{getline; if ($0 ~ /\]=com.jetbrains.intellij$/) found=1} END{exit found?0:1}' "$ARGS_LOG"; then
+  pass "U018" "notify.sh forwards inferred activate bundle as native -activate outside tmux"
+else
+  fail "U018" "notify.sh did not forward inferred activate bundle outside tmux"
+fi
+
+case_start "U019" "notify.sh tmux mode omits native -activate and emits execute payload"
+TMP_DIR=$(make_case_tmp_dir "U019")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+cat > "$FAKE_TMUX" <<'FAKE_TMUX_U019'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|9|win|1|%42|client-u|/dev/ttys042"
+  exit 0
+fi
+exit 0
+FAKE_TMUX_U019
+chmod +x "$FAKE_TMUX"
+TMUX="/tmp/fake-socket,999,0" TMUX_PANE="%42" NOTIFY_ACTIVATE_BUNDLE_ID="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "unit tmux execute test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U019" "$rc" 0 \
+  "notify.sh tmux execute probe exits 0" \
+  "notify.sh tmux execute probe exited $rc"
+assert_file_not_contains "U019" "$ARGS_LOG" '\]=-activate$' \
+  "notify.sh omits native -activate in tmux mode" \
+  "notify.sh unexpectedly forwarded native -activate in tmux mode"
+assert_file_contains "U019" "$ARGS_LOG" '\]=-execute$' \
+  "notify.sh emits execute payload in tmux mode" \
+  "notify.sh did not emit execute payload in tmux mode"
+
+case_start "U020" "notify.sh tmux execute payload carries inferred activate bundle"
+assert_file_contains "U020" "$ARGS_LOG" "tmux-redirect.sh'.*'com.jetbrains.intellij'" \
+  "notify.sh passes inferred activate bundle to tmux redirect execute payload" \
+  "notify.sh did not carry inferred activate bundle in tmux execute payload"
+
+finish

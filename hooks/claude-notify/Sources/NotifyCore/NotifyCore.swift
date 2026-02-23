@@ -226,35 +226,72 @@ private let flagsWithValues: Set<String> = [
   "-sender-app-path", "-origin-exec"
 ]
 
-/// Rewrites arguments for non-spoof fallback execution.
+private let internalMarkerFlags: Set<String> = [
+  "-spoofed-run", "-fallback-run"
+]
+
+/// Rewrites CLI arguments while dropping selected internal flags.
 ///
-/// - Parameter argv: Original process arguments without executable name.
-/// - Returns: Arguments with spoof-only options removed and fallback markers applied.
-public func buildFallbackArguments(from argv: [String]) -> [String] {
+/// - Parameters:
+///   - argv: Original process arguments without executable name.
+///   - dropStandaloneFlags: Flags removed without consuming trailing values.
+///   - dropValueFlags: Value flags removed with their value when present.
+///   - preserveDanglingValueFlags: Whether value flags missing a value should be preserved.
+/// - Returns: Rewritten argument array.
+private func rewriteArguments(
+  from argv: [String],
+  dropStandaloneFlags: Set<String> = internalMarkerFlags,
+  dropValueFlags: Set<String>,
+  preserveDanglingValueFlags: Bool
+) -> [String] {
   var out: [String] = []
   var index = 0
 
   while index < argv.count {
     let flag = argv[index]
-    if flag == "-spoofed-run" || flag == "-fallback-run" {
+    if dropStandaloneFlags.contains(flag) {
       index += 1
       continue
     }
-    if flagsWithValues.contains(flag) {
-      if index + 1 < argv.count,
-         flag != "-sender-mode",
-         flag != "-sender-bundle-id",
-         flag != "-sender-app-path",
-         flag != "-origin-exec" {
-        out.append(flag)
-        out.append(argv[index + 1])
-      }
+
+    guard flagsWithValues.contains(flag) else {
+      out.append(flag)
+      index += 1
+      continue
+    }
+
+    let hasValue = index + 1 < argv.count
+    if dropValueFlags.contains(flag) {
+      index += hasValue ? 2 : 1
+      continue
+    }
+
+    if hasValue {
+      out.append(flag)
+      out.append(argv[index + 1])
       index += 2
       continue
     }
-    out.append(flag)
+
+    if preserveDanglingValueFlags {
+      out.append(flag)
+    }
     index += 1
   }
+
+  return out
+}
+
+/// Rewrites arguments for non-spoof fallback execution.
+///
+/// - Parameter argv: Original process arguments without executable name.
+/// - Returns: Arguments with spoof-only options removed and fallback markers applied.
+public func buildFallbackArguments(from argv: [String]) -> [String] {
+  var out = rewriteArguments(
+    from: argv,
+    dropValueFlags: ["-sender-mode", "-sender-bundle-id", "-sender-app-path", "-origin-exec"],
+    preserveDanglingValueFlags: false
+  )
 
   out.append(contentsOf: ["-sender-mode", "off", "-fallback-run"])
   return out
@@ -265,28 +302,11 @@ public func buildFallbackArguments(from argv: [String]) -> [String] {
 /// - Parameter argv: Original process arguments without executable name.
 /// - Returns: Arguments with relaunch-only options removed.
 public func buildRetrySpoofArguments(from argv: [String]) -> [String] {
-  var out: [String] = []
-  var index = 0
-
-  while index < argv.count {
-    let flag = argv[index]
-    if flag == "-spoofed-run" || flag == "-fallback-run" {
-      index += 1
-      continue
-    }
-    if flagsWithValues.contains(flag) {
-      if index + 1 < argv.count, flag != "-origin-exec" {
-        out.append(flag)
-        out.append(argv[index + 1])
-      }
-      index += 2
-      continue
-    }
-    out.append(flag)
-    index += 1
-  }
-
-  return out
+  rewriteArguments(
+    from: argv,
+    dropValueFlags: ["-origin-exec"],
+    preserveDanglingValueFlags: false
+  )
 }
 
 /// Rewrites arguments for helper-app relaunch while preserving user-facing flags.
@@ -296,37 +316,11 @@ public func buildRetrySpoofArguments(from argv: [String]) -> [String] {
 ///   - originExecutablePath: Path to the original executable for fallback/retry runs.
 /// - Returns: Relaunch arguments containing internal relaunch markers.
 public func buildRelaunchArguments(from argv: [String], originExecutablePath: String?) -> [String] {
-  var out: [String] = []
-  var index = 0
-
-  while index < argv.count {
-    let flag = argv[index]
-    if flag == "-spoofed-run" || flag == "-fallback-run" {
-      index += 1
-      continue
-    }
-    if flagsWithValues.contains(flag) {
-      if flag == "-origin-exec" {
-        if index + 1 < argv.count {
-          index += 2
-        } else {
-          index += 1
-        }
-        continue
-      }
-      if index + 1 < argv.count {
-        out.append(flag)
-        out.append(argv[index + 1])
-        index += 2
-      } else {
-        out.append(flag)
-        index += 1
-      }
-      continue
-    }
-    out.append(flag)
-    index += 1
-  }
+  var out = rewriteArguments(
+    from: argv,
+    dropValueFlags: ["-origin-exec"],
+    preserveDanglingValueFlags: true
+  )
 
   out.append("-spoofed-run")
   if let origin = normalizeOption(originExecutablePath) {

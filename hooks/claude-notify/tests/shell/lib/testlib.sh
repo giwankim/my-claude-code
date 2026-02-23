@@ -71,3 +71,42 @@ finish() {
   printf '\nResults: %d passed, %d failed\n' "$PASS" "$FAIL"
   [ "$FAIL" -eq 0 ]
 }
+
+assert_rc_eq() {
+  case_id="$1"
+  rc="$2"
+  expected="$3"
+  pass_message="$4"
+  fail_message="$5"
+  if [ "$rc" -eq "$expected" ]; then
+    pass "$case_id" "$pass_message"
+  else
+    fail "$case_id" "$fail_message"
+  fi
+}
+
+assert_file_contains() {
+  case_id="$1"
+  file="$2"
+  pattern="$3"
+  pass_message="$4"
+  fail_message="$5"
+  if grep -q -- "$pattern" "$file"; then
+    pass "$case_id" "$pass_message"
+  else
+    fail "$case_id" "$fail_message"
+  fi
+}
+
+assert_file_not_contains() {
+  case_id="$1"
+  file="$2"
+  pattern="$3"
+  pass_message="$4"
+  fail_message="$5"
+  if grep -q -- "$pattern" "$file"; then
+    fail "$case_id" "$fail_message"
+  else
+    pass "$case_id" "$pass_message"
+  fi
+}

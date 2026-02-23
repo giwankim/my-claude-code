@@ -316,6 +316,34 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     self.args = args
   }
 
+  /// Runs a subprocess synchronously and emits warnings on launch/exit failures.
+  ///
+  /// - Parameters:
+  ///   - executablePath: Process executable path.
+  ///   - arguments: Process argument vector.
+  ///   - nonZeroMessage: Builds warning text for non-zero exits.
+  ///   - launchErrorMessage: Builds warning text for process launch failures.
+  private func runClickTask(
+    executablePath: String,
+    arguments: [String],
+    nonZeroMessage: (Int32) -> String,
+    launchErrorMessage: (Error) -> String
+  ) {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: executablePath)
+    task.arguments = arguments
+    do {
+      try task.run()
+      // Intentional synchronous wait: this short-lived CLI exits immediately after handling actions.
+      task.waitUntilExit()
+      if task.terminationStatus != 0 {
+        warning(nonZeroMessage(task.terminationStatus))
+      }
+    } catch {
+      warning(launchErrorMessage(error))
+    }
+  }
+
   /// Handles notification click interactions and optional execute/activate actions.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
@@ -323,35 +351,21 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     if let cmd = args.execute {
-      let task = Process()
-      task.executableURL = URL(fileURLWithPath: "/bin/sh")
-      task.arguments = ["-c", cmd]
-      do {
-        try task.run()
-        // Intentional synchronous wait: this short-lived CLI exits immediately after handling actions.
-        task.waitUntilExit()
-        if task.terminationStatus != 0 {
-          warning("click execute command exited \(task.terminationStatus)")
-        }
-      } catch {
-        warning("failed to run click execute command: \(error.localizedDescription)")
-      }
+      runClickTask(
+        executablePath: "/bin/sh",
+        arguments: ["-c", cmd],
+        nonZeroMessage: { "click execute command exited \($0)" },
+        launchErrorMessage: { "failed to run click execute command: \($0.localizedDescription)" }
+      )
     }
 
     if let bundleID = args.activate {
-      let task = Process()
-      task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-      task.arguments = ["-b", bundleID]
-      do {
-        try task.run()
-        // Intentional synchronous wait: this short-lived CLI exits immediately after handling actions.
-        task.waitUntilExit()
-        if task.terminationStatus != 0 {
-          warning("click activate command exited \(task.terminationStatus) for \(bundleID)")
-        }
-      } catch {
-        warning("failed to activate \(bundleID): \(error.localizedDescription)")
-      }
+      runClickTask(
+        executablePath: "/usr/bin/open",
+        arguments: ["-b", bundleID],
+        nonZeroMessage: { "click activate command exited \($0) for \(bundleID)" },
+        launchErrorMessage: { "failed to activate \(bundleID): \($0.localizedDescription)" }
+      )
     }
 
     removePid()

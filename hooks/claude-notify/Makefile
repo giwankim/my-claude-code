@@ -18,6 +18,7 @@ APP_DIR := $(CURDIR)/claude-notify.app
 APP_RESOURCES_DIR := $(APP_DIR)/Contents/Resources
 APP_ICON_NAME := claude-code.icns
 CLAUDE_ICON_SOURCE ?= /Applications/Claude.app/Contents/Resources/electron.icns
+UNIT_SHELL_TEST_DIR := $(if $(wildcard tests/shell/unit),tests/shell/unit,Tests/shell/unit)
 
 build:
 	$(SWIFT_ENV) swift build --disable-sandbox -c release --product claude-notify
@@ -36,7 +37,7 @@ clean:
 	rm -rf $(APP_DIR)/Contents/MacOS $(APP_DIR)/Contents/_CodeSignature
 
 check-cases-unit:
-	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests Tests/required-cases.txt
+	./scripts/check-required-cases.sh unit Sources/NotifyCore Tests/NotifyCoreTests $(UNIT_SHELL_TEST_DIR) Tests/required-cases.txt
 
 check-cases-integration:
 	./scripts/check-required-cases.sh integration Sources/NotifyCore Tests/NotifyCoreTests tests/shell/integration Tests/required-cases.txt
@@ -49,6 +50,7 @@ check-docstrings:
 
 test-unit: check-docstrings check-cases-unit
 	$(SWIFT_ENV) swift test --disable-sandbox --filter Unit
+	$(UNIT_SHELL_TEST_DIR)/run.sh
 
 test-integration: build check-cases-integration
 	$(SWIFT_ENV) swift test --disable-sandbox --filter Integration

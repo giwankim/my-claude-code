@@ -3,35 +3,22 @@
 PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
 # shellcheck source=hooks/claude-notify/tests/shell/lib/testlib.sh
 . "$PROJECT_DIR/tests/shell/lib/testlib.sh"
+# shellcheck source=hooks/claude-notify/tests/shell/lib/notify-test-helpers.sh
+. "$PROJECT_DIR/tests/shell/lib/notify-test-helpers.sh"
 
 NOTIFY="$PROJECT_DIR/claude-notify.app/Contents/MacOS/claude-notify"
 SCRIPT="$PROJECT_DIR/notify.sh"
 PID_FILE="/tmp/claude-notify.pid.$$"
+TEST_TMP_DIRS=""
+EXPECTED_NOTIFY_NAME=$(basename "$NOTIFY")
 export CLAUDE_NOTIFY_PID_FILE="$PID_FILE"
 
 cleanup() {
-  if [ -f "$PID_FILE" ]; then
-    pid=$(cat "$PID_FILE" 2>/dev/null)
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null
-    rm -f "$PID_FILE"
-  fi
+  kill_pid_from_file "$PID_FILE" "$EXPECTED_NOTIFY_NAME" >/dev/null 2>&1 || true
+  rm -f "$PID_FILE"
+  cleanup_registered_tmp_dirs
 }
 trap cleanup EXIT
-
-drain_pid_file_if_present() {
-  pid_file="$1"
-  max_tries="${2:-20}"
-  if wait_for_pid_file "$pid_file" "$max_tries"; then
-    pid=$(cat "$pid_file" 2>/dev/null)
-    case "$pid" in
-      ''|*[!0-9]*)
-        return 0
-        ;;
-    esac
-    kill "$pid" 2>/dev/null || true
-    wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true
-  fi
-}
 
 # PID/signal lifecycle checks are decoupled from OS notification authorization.
 # Delivery/fallback semantics remain covered by E007, E010, and E011.
@@ -150,21 +137,36 @@ fi
 
 case_start "E007" "Notification post path exits cleanly"
 rm -f "$PID_FILE"
-"$NOTIFY" -message "post-test" -group "test-post" -timeout 2 &
-post_pid=$!
-wait "$post_pid" 2>/dev/null
+TMP_DIR=$(make_case_tmp_dir "E007")
+FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
+OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
+write_fake_osascript_success "$FAKE_OSASCRIPT"
+err=$(CLAUDE_NOTIFY_TEST_FORCE_AUTH_DENIED=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" \
+  "$NOTIFY" -message "post-test" -group "test-post" -timeout 2 2>&1 >/dev/null)
 rc=$?
+drain_pid_file_if_present "$PID_FILE" 20 "$EXPECTED_NOTIFY_NAME"
 if [ "$rc" -eq 0 ]; then
   pass "E007" "notification post path exited 0"
 else
   fail "E007" "notification post path exited $rc"
+fi
+if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1 \
+  && grep -q '\[3\]=post-test' "$OSASCRIPT_LOG"; then
+  pass "E007" "notification post path used deterministic AppleScript fallback payload"
+else
+  fail "E007" "notification post path missing deterministic AppleScript fallback payload"
+fi
+if echo "$err" | grep -q "posted notification via AppleScript fallback"; then
+  pass "E007" "notification post path reports AppleScript fallback success"
+else
+  fail "E007" "notification post path missing AppleScript fallback success warning"
 fi
 
 case_start "E008" "notify.sh runs without error"
 if [ -x "$SCRIPT" ] || [ -f "$SCRIPT" ]; then
   CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 "$SCRIPT" "test from test-runtime.sh" 2>/dev/null
   rc=$?
-  drain_pid_file_if_present "$PID_FILE" 20
+  drain_pid_file_if_present "$PID_FILE" 20 "$EXPECTED_NOTIFY_NAME"
   if [ "$rc" -eq 0 ]; then
     pass "E008" "notify.sh exits 0"
   else
@@ -196,7 +198,7 @@ fi
 case_start "E010" "Auto spoofed post failure triggers fallback"
 err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 "$NOTIFY" -message "sender-auto-forced-failure" -sender-mode auto -spoofed-run -origin-exec "$NOTIFY" -timeout 2 2>&1 >/dev/null)
 rc=$?
-drain_pid_file_if_present "$PID_FILE" 20
+drain_pid_file_if_present "$PID_FILE" 20 "$EXPECTED_NOTIFY_NAME"
 if [ "$rc" -eq 0 ]; then
   pass "E010" "auto spoofed post failure exits 0"
 else
@@ -209,18 +211,84 @@ else
 fi
 
 case_start "E011" "Required spoofed post failure does not fallback"
-err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 "$NOTIFY" -message "sender-required-forced-failure" -sender-mode required -spoofed-run -origin-exec "$NOTIFY" -timeout 1 2>&1 >/dev/null)
+TMP_DIR=$(make_case_tmp_dir "E011")
+FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
+OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
+write_fake_osascript_success "$FAKE_OSASCRIPT"
+err=$(CLAUDE_NOTIFY_TEST_FORCE_POST_ERROR=1 CLAUDE_NOTIFY_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" \
+  "$NOTIFY" -message "sender-required-forced-failure" -sender-mode required -spoofed-run -origin-exec "$NOTIFY" -timeout 1 2>&1 >/dev/null)
 rc=$?
-drain_pid_file_if_present "$PID_FILE" 20
+drain_pid_file_if_present "$PID_FILE" 20 "$EXPECTED_NOTIFY_NAME"
 if [ "$rc" -eq 0 ]; then
   pass "E011" "required spoofed post failure exits 0"
 else
   fail "E011" "required spoofed post failure exited $rc (expected 0)"
 fi
+if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1; then
+  pass "E011" "required spoofed post failure uses deterministic AppleScript fallback"
+else
+  fail "E011" "required spoofed post failure did not invoke deterministic AppleScript fallback"
+fi
 if echo "$err" | grep -q "launched fallback notification without spoof"; then
   fail "E011" "required spoofed post failure unexpectedly launched fallback"
 else
   pass "E011" "required spoofed post failure does not fallback"
+fi
+
+case_start "E012" "notify.sh outside tmux logs activate inference path"
+TMP_DIR=$(make_case_tmp_dir "E012")
+FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
+OSASCRIPT_LOG="$TMP_DIR/osascript-args.log"
+DEBUG_LOG="$TMP_DIR/notify-debug.log"
+write_fake_osascript_success "$FAKE_OSASCRIPT"
+TMUX="" NOTIFY_DEBUG_LOG="$DEBUG_LOG" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_OSASCRIPT" OSASCRIPT_ARGS_LOG="$OSASCRIPT_LOG" CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 NOTIFY_TIMEOUT=1 \
+  "$SCRIPT" "e2e outside tmux inference test" 2>/dev/null
+rc=$?
+drain_pid_file_if_present "$PID_FILE" 30 "$EXPECTED_NOTIFY_NAME"
+if [ "$rc" -eq 0 ]; then
+  pass "E012" "notify.sh outside-tmux inference probe exits 0"
+else
+  fail "E012" "notify.sh outside-tmux inference probe exited $rc"
+fi
+if grep -q "inferred activate bundle id outside tmux: com.jetbrains.intellij" "$DEBUG_LOG" \
+  && grep -q "notify_run activate_override=com.jetbrains.intellij activate_bundle=com.jetbrains.intellij" "$DEBUG_LOG"; then
+  pass "E012" "notify.sh outside-tmux debug log records inferred native activate path"
+else
+  fail "E012" "notify.sh outside-tmux debug log missing inferred native activate path"
+fi
+
+case_start "E013" "notify.sh tmux mode logs execute payload inference path"
+TMP_DIR=$(make_case_tmp_dir "E013")
+FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+DEBUG_LOG="$TMP_DIR/notify-debug.log"
+write_fake_osascript_success "$FAKE_OSASCRIPT"
+cat > "$FAKE_TMUX" <<'FAKE_TMUX_E013'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|6|win|3|%61|client-e2e|/dev/ttys061"
+  exit 0
+fi
+exit 0
+FAKE_TMUX_E013
+chmod +x "$FAKE_TMUX"
+TMUX="/tmp/fake-socket,661,0" TMUX_PANE="%61" NOTIFY_DEBUG_LOG="$DEBUG_LOG" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_OSASCRIPT" NOTIFY_TMUX_BIN="$FAKE_TMUX" CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 NOTIFY_TIMEOUT=1 \
+  "$SCRIPT" "e2e tmux inference test" 2>/dev/null
+rc=$?
+drain_pid_file_if_present "$PID_FILE" 30 "$EXPECTED_NOTIFY_NAME"
+if [ "$rc" -eq 0 ]; then
+  pass "E013" "notify.sh tmux inference probe exits 0"
+else
+  fail "E013" "notify.sh tmux inference probe exited $rc"
+fi
+if grep -q "inferred activate bundle id in tmux mode: com.jetbrains.intellij" "$DEBUG_LOG" \
+  && grep -q "notify_run activate_override=<empty> activate_bundle=com.jetbrains.intellij" "$DEBUG_LOG" \
+  && grep -q "execute payload prepared .*activate_bundle=com.jetbrains.intellij" "$DEBUG_LOG"; then
+  pass "E013" "notify.sh tmux debug log records execute payload inference path"
+else
+  fail "E013" "notify.sh tmux debug log missing execute payload inference path"
 fi
 
 finish
