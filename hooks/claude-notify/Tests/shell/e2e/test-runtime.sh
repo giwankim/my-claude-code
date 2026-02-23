@@ -224,10 +224,11 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "E011" "required spoofed post failure exited $rc (expected 0)"
 fi
-if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1; then
-  pass "E011" "required spoofed post failure uses deterministic AppleScript fallback"
+if wait_for_file "$OSASCRIPT_LOG" 20 >/dev/null 2>&1 \
+  && grep -q '\[3\]=sender-required-forced-failure' "$OSASCRIPT_LOG"; then
+  pass "E011" "required spoofed post failure uses deterministic AppleScript fallback payload"
 else
-  fail "E011" "required spoofed post failure did not invoke deterministic AppleScript fallback"
+  fail "E011" "required spoofed post failure missing deterministic AppleScript fallback payload"
 fi
 if echo "$err" | grep -q "launched fallback notification without spoof"; then
   fail "E011" "required spoofed post failure unexpectedly launched fallback"
@@ -270,10 +271,17 @@ FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
 DEBUG_LOG="$TMP_DIR/notify-debug.log"
 write_fake_osascript_success "$FAKE_OSASCRIPT"
-cat > "$FAKE_TMUX" <<'FAKE_TMUX_E013'
+TMUX_DISPLAY_MESSAGE_FORMAT=$(notify_tmux_display_message_format "$SCRIPT")
+TMUX_DISPLAY_PAYLOAD=$(build_tmux_display_message_payload "sess" "6" "win" "3" "%61" "client-e2e" "/dev/ttys061")
+if [ "$TMUX_DISPLAY_MESSAGE_FORMAT" != "$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT" ]; then
+  fail "E013" "notify.sh tmux display-message format drifted from expected parser contract"
+fi
+# Keep this fake wired to notify.sh's NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT parser template.
+cat > "$FAKE_TMUX" <<FAKE_TMUX_E013
 #!/bin/sh
-if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|6|win|3|%61|client-e2e|/dev/ttys061"
+if [ "\$1" = "display-message" ]; then
+  printf '%s\n' "\$*" | grep -F -- " -p $TMUX_DISPLAY_MESSAGE_FORMAT" >/dev/null 2>&1 || exit 1
+  printf '%s\n' "$TMUX_DISPLAY_PAYLOAD"
   exit 0
 fi
 exit 0

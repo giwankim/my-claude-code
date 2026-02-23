@@ -9,6 +9,7 @@ SENDER_APP_PATH="${NOTIFY_SENDER_APP_PATH:-$SCRIPT_DIR/claude-notify.app}"
 NOTIFY_TIMEOUT="${NOTIFY_TIMEOUT:-90}"
 TMUX_BIN="${NOTIFY_TMUX_BIN:-$(command -v tmux 2>/dev/null || printf '%s' /opt/homebrew/bin/tmux)}"
 TMUX_REDIRECT_SCRIPT="${NOTIFY_TMUX_REDIRECT_SCRIPT:-$SCRIPT_DIR/tmux-redirect.sh}"
+NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}'
 NOTIFY_ISOLATE_HELPER_BUNDLE_ID="${NOTIFY_ISOLATE_HELPER_BUNDLE_ID:-1}"
 NOTIFY_ALLOW_NONISOLATED_RETRY="${NOTIFY_ALLOW_NONISOLATED_RETRY:-0}"
 ACTIVATE_BUNDLE_ID="${NOTIFY_ACTIVATE_BUNDLE_ID:-}"
@@ -84,7 +85,7 @@ if [ -n "$TMUX" ]; then
     TARGET_PANE=$("$TMUX_BIN" display-message -p '#{pane_id}' 2>/dev/null)
   fi
 
-  TMUX_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}'
+  TMUX_FORMAT="$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT"
   if [ -n "$TARGET_PANE" ]; then
     TMUX_INFO=$("$TMUX_BIN" display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT" 2>/dev/null)
   else
