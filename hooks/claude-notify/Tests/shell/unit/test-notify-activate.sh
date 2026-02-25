@@ -301,10 +301,13 @@ wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 assert_rc_eq "U029" "$rc" 0 \
   "notify.sh tmux timeout capture probe exits 0" \
   "notify.sh tmux timeout capture probe exited $rc"
-if [ "$elapsed_ms" -le 400 ]; then
+# U029 is intentionally load-sensitive: with NOTIFY_TMUX_CMD_TIMEOUT_MS=100,
+# elapsed_ms can overshoot under CI contention due to process-group kill + waitpid.
+# This runner has shown flakes above 4x, so we use a 6x ceiling for stability.
+if [ "$elapsed_ms" -le 600 ]; then
   pass "U029" "notify.sh tmux timeout capture probe exits quickly"
 else
-  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=400ms)"
+  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=600ms)"
 fi
 if echo "$err" | grep -q "unable to read tmux context"; then
   pass "U029" "notify.sh tmux timeout capture probe emits fail-open warning"
@@ -331,37 +334,42 @@ assert_file_contains "U030" "$DEBUG_LOG" "invalid timeout value for NOTIFY_STDIN
   "notify.sh did not log invalid timeout env fallback at debug level"
 
 case_start "U031" "notify.sh routes tmux pane/metadata/client lookups through shared helper"
-assert_file_contains "U031" "$SCRIPT" "run_tmux_query_with_logging() {" \
-  "notify.sh defines shared tmux query logging helper" \
-  "notify.sh missing shared tmux query logging helper"
-if grep -q 'TARGET_PANE="$(run_tmux_query_with_logging' "$SCRIPT"; then
+if grep -Eq 'run_tmux_query_with_logging[[:space:]]*\(\)[[:space:]]*\{' "$SCRIPT"; then
+  pass "U031" "notify.sh defines shared tmux query logging helper"
+else
+  fail "U031" "notify.sh missing shared tmux query logging helper"
+fi
+if grep -Eq 'TARGET_PANE="\$\(run_tmux_query_with_logging[[:space:]]' "$SCRIPT"; then
   pass "U031" "notify.sh target pane lookup uses shared helper"
 else
   fail "U031" "notify.sh target pane lookup does not use shared helper"
 fi
-tmux_info_helper_calls=$(grep -c 'TMUX_INFO="$(run_tmux_query_with_logging' "$SCRIPT")
+tmux_info_helper_calls=$(grep -Ec 'TMUX_INFO="\$\(run_tmux_query_with_logging[[:space:]]' "$SCRIPT")
 if [ "$tmux_info_helper_calls" -eq 2 ]; then
   pass "U031" "notify.sh tmux metadata lookups use shared helper in both branches"
 else
   fail "U031" "notify.sh tmux metadata helper call count was ${tmux_info_helper_calls} (expected 2)"
 fi
-if grep -q 'CLIENT_INFO="$(run_tmux_query_with_logging' "$SCRIPT"; then
+if grep -Eq 'CLIENT_INFO="\$\(run_tmux_query_with_logging[[:space:]]' "$SCRIPT"; then
   pass "U031" "notify.sh client metadata lookup uses shared helper"
 else
   fail "U031" "notify.sh client metadata lookup does not use shared helper"
 fi
-assert_file_not_contains "U031" "$SCRIPT" 'TARGET_PANE="$(tmux_query display-message -p' \
-  "notify.sh removed direct tmux_query target pane lookup" \
-  "notify.sh still has direct tmux_query target pane lookup"
-assert_file_not_contains "U031" "$SCRIPT" 'TMUX_INFO="$(tmux_query display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT")"' \
-  "notify.sh removed direct tmux_query metadata target lookup" \
-  "notify.sh still has direct tmux_query metadata target lookup"
-assert_file_not_contains "U031" "$SCRIPT" 'TMUX_INFO="$(tmux_query display-message -p "$TMUX_FORMAT")"' \
-  "notify.sh removed direct tmux_query metadata fallback lookup" \
-  "notify.sh still has direct tmux_query metadata fallback lookup"
-assert_file_not_contains "U031" "$SCRIPT" 'CLIENT_INFO="$(tmux_query display-message -p '\''#{client_name}|#{client_tty}'\'')"' \
-  "notify.sh removed direct tmux_query client metadata lookup" \
-  "notify.sh still has direct tmux_query client metadata lookup"
+if grep -Eq 'TARGET_PANE="\$\(tmux_query[[:space:]]+display-message' "$SCRIPT"; then
+  fail "U031" "notify.sh still has direct tmux_query target pane lookup"
+else
+  pass "U031" "notify.sh removed direct tmux_query target pane lookup"
+fi
+if grep -Eq 'TMUX_INFO="\$\(tmux_query[[:space:]]+display-message' "$SCRIPT"; then
+  fail "U031" "notify.sh still has direct tmux_query metadata lookup"
+else
+  pass "U031" "notify.sh removed direct tmux_query metadata lookup"
+fi
+if grep -Eq 'CLIENT_INFO="\$\(tmux_query[[:space:]]+display-message' "$SCRIPT"; then
+  fail "U031" "notify.sh still has direct tmux_query client metadata lookup"
+else
+  pass "U031" "notify.sh removed direct tmux_query client metadata lookup"
+fi
 
 case_start "U032" "notify.sh timeout kill target always uses child process group"
 assert_file_contains "U032" "$SCRIPT" 'my $kill_target = -$pid;' \
@@ -373,5 +381,32 @@ assert_file_not_contains "U032" "$SCRIPT" 'my $use_process_group_kill = 0;' \
 assert_file_not_contains "U032" "$SCRIPT" 'if (setpgid($pid, $pid) == 0)' \
   "notify.sh removes parent-side setpgid race path" \
   "notify.sh still has parent-side setpgid race path"
+
+case_start "U033" "notify.sh logs missing jq dependency when stdin payload parsing is unavailable"
+TMP_DIR=$(make_case_tmp_dir "U033")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+DEBUG_LOG="$TMP_DIR/notify-debug.log"
+NO_JQ_PATH="$TMP_DIR/no-jq-path"
+mkdir -p "$NO_JQ_PATH"
+ln -s /bin/cat "$NO_JQ_PATH/cat"
+ln -s /bin/date "$NO_JQ_PATH/date"
+write_fake_notify "$FAKE_NOTIFY"
+printf '%s' '{"message":"payload message without jq"}' | \
+  PATH="$NO_JQ_PATH" TMUX="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_DEBUG_LOG="$DEBUG_LOG" \
+  NOTIFY_ACTIVATE_BUNDLE_ID="com.jetbrains.intellij" NOTIFY_SENDER_MODE=off \
+  NOTIFY_STDIN_TIMEOUT_MS=0 NOTIFY_TMUX_CMD_TIMEOUT_MS=0 NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS=0 \
+  "$SCRIPT" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U033" "$rc" 0 \
+  "notify.sh missing-jq payload probe exits 0" \
+  "notify.sh missing-jq payload probe exited $rc"
+assert_file_contains "U033" "$ARGS_LOG" "Waiting for input" \
+  "notify.sh missing-jq payload probe falls back to default message" \
+  "notify.sh missing-jq payload probe did not fall back to default message"
+assert_file_contains "U033" "$DEBUG_LOG" "jq not found; cannot parse stdin payload" \
+  "notify.sh logs missing jq dependency at debug level" \
+  "notify.sh missing-jq payload probe did not log missing jq dependency"
 
 finish

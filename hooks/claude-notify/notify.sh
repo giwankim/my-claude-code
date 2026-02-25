@@ -140,7 +140,10 @@ read_hook_payload_with_timeout() {
 
 message_from_payload() {
   payload="$1"
-  command -v jq >/dev/null 2>&1 || return 1
+  if ! command -v jq >/dev/null 2>&1; then
+    log_debug "jq not found; cannot parse stdin payload"
+    return 1
+  fi
   printf '%s' "$payload" | jq -r '(.message | select(type == "string" and length > 0)) // (.last_assistant_message | select(type == "string" and length > 0)) // "Waiting for input"' 2>/dev/null
 }
 
