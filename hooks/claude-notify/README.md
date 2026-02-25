@@ -21,6 +21,7 @@
 
 - macOS (this module targets macOS notification behavior).
 - Swift toolchain (`swift build`, `swift test`).
+- `perl` with `Time::HiRes` (used by `notify.sh` timeout wrappers; bundled by default on standard macOS Perl builds).
 - `jq` available on `PATH` (used by `notify.sh` stdin JSON parsing).
 - `tmux` optional (used for richer context and execute actions when running inside tmux).
 
@@ -104,7 +105,7 @@ Example:
         "hooks": [
           {
             "type": "command",
-            "command": "NOTIFY_SENDER_MODE=off NOTIFY_TIMEOUT=15 /Users/gwk/.claude/hooks/claude-notify/notify.sh \"Claude finished\"",
+            "command": "NOTIFY_SENDER_MODE=off NOTIFY_TIMEOUT=15 $HOME/.claude/hooks/claude-notify/notify.sh \"Claude finished\"",
             "timeout": 3
           }
         ]

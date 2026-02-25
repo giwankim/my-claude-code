@@ -34,6 +34,19 @@ STDIN_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_STDIN_TIMEOUT_MS:-}" "150")"
 TMUX_CMD_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_TMUX_CMD_TIMEOUT_MS:-}" "200")"
 ACTIVATE_PROBE_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS:-}" "150")"
 
+require_perl_timeout_runtime() {
+  if ! command -v perl >/dev/null 2>&1; then
+    printf '%s\n' "notify.sh: perl is required for timeout handling (run_with_timeout_ms)." >&2
+    exit 1
+  fi
+  if ! perl -MTime::HiRes -e '1' >/dev/null 2>&1; then
+    printf '%s\n' "notify.sh: perl module Time::HiRes is required for timeout handling." >&2
+    exit 1
+  fi
+}
+
+require_perl_timeout_runtime
+
 log_debug() {
   [ -n "$DEBUG_LOG" ] || return
   printf '%s [%d] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$$" "$1" >> "$DEBUG_LOG"

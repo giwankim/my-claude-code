@@ -25,6 +25,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) extension
 - macOS
 - Swift toolchain (`swift build`, `swift test`)
 - Python 3
+- `perl` with `Time::HiRes` (bundled by default on standard macOS Perl builds)
 - `jq`
 
 ### Build and Test
