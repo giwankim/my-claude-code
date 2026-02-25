@@ -863,22 +863,22 @@ fi
 exit 0
 CASE_I130_TMUX
 chmod +x "$FAKE_TMUX"
-start_epoch=$(date +%s)
+start_ms=$(now_ms)
 err=$(TMUX="/tmp/fake-socket,111,0" TMUX_PANE="%1" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
   NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_CMD_TIMEOUT_MS=100 NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux timeout test" 2>&1 >/dev/null)
 rc=$?
-end_epoch=$(date +%s)
-elapsed=$((end_epoch - start_epoch))
+end_ms=$(now_ms)
+elapsed_ms=$((end_ms - start_ms))
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
   pass "I130" "notify.sh tmux-timeout probe exits 0"
 else
   fail "I130" "notify.sh tmux-timeout probe exited $rc"
 fi
-if [ "$elapsed" -le 1 ]; then
+if [ "$elapsed_ms" -le 1900 ]; then
   pass "I130" "notify.sh tmux-timeout probe exits quickly"
 else
-  fail "I130" "notify.sh tmux-timeout probe took ${elapsed}s (expected <=1s)"
+  fail "I130" "notify.sh tmux-timeout probe took ${elapsed_ms}ms (expected <=1900ms)"
 fi
 if echo "$err" | grep -q "unable to read tmux context"; then
   pass "I130" "notify.sh tmux-timeout probe emits fail-open warning"
@@ -904,24 +904,24 @@ printf '%s\n' "com.jetbrains.intellij"
 exit 0
 CASE_I131_OSASCRIPT
 chmod +x "$FAKE_ACTIVATE_OSASCRIPT"
-start_epoch=$(date +%s)
+start_ms=$(now_ms)
 TMUX="" TERM_PROGRAM="JetBrains-JediTerm" NOTIFY_ACTIVATE_BUNDLE_ID="" \
   NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS=100 \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_SENDER_MODE=off \
   "$SCRIPT" "activate timeout test" 2>/dev/null
 rc=$?
-end_epoch=$(date +%s)
-elapsed=$((end_epoch - start_epoch))
+end_ms=$(now_ms)
+elapsed_ms=$((end_ms - start_ms))
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
   pass "I131" "notify.sh activate-timeout probe exits 0"
 else
   fail "I131" "notify.sh activate-timeout probe exited $rc"
 fi
-if [ "$elapsed" -le 1 ]; then
+if [ "$elapsed_ms" -le 1900 ]; then
   pass "I131" "notify.sh activate-timeout probe exits quickly"
 else
-  fail "I131" "notify.sh activate-timeout probe took ${elapsed}s (expected <=1s)"
+  fail "I131" "notify.sh activate-timeout probe took ${elapsed_ms}ms (expected <=1900ms)"
 fi
 if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
   fail "I131" "notify.sh activate-timeout probe unexpectedly forwarded -activate"
