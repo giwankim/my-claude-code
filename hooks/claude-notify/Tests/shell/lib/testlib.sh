@@ -68,6 +68,8 @@ wait_for_file() {
 }
 
 wait_for_file_contains() {
+  # NOTE: `pattern` is interpreted by grep as a BRE regex (same as assert_file_contains).
+  # For literal matching, use fixed-string semantics (for example, grep -qF).
   file="$1"
   pattern="$2"
   max_tries="${3:-30}"
