@@ -82,32 +82,32 @@ if ($pid == 0) {
 }
 
 my $deadline = time() + $timeout;
-  while (1) {
+while (1) {
     my $result = waitpid($pid, 1);
     if ($result == $pid) {
-      my $status = $?;
-      if (($status & 127) != 0) {
-        exit(128 + ($status & 127));
-      }
-      exit($status >> 8);
+        my $status = $?;
+        if (($status & 127) != 0) {
+            exit(128 + ($status & 127));
+        }
+        exit($status >> 8);
     }
-  if ($result == -1) {
-    exit 1;
-  }
-  if (time() >= $deadline) {
-    kill "TERM", $pid;
-    for (1 .. 10) {
-      my $term_result = waitpid($pid, 1);
-      if ($term_result == $pid || $term_result == -1) {
+    if ($result == -1) {
+        exit 1;
+    }
+    if (time() >= $deadline) {
+        kill "TERM", $pid;
+        for (1 .. 10) {
+            my $term_result = waitpid($pid, 1);
+            if ($term_result == $pid || $term_result == -1) {
+                exit 124;
+            }
+            usleep(10_000);
+        }
+        kill "KILL", $pid;
+        waitpid($pid, 0);
         exit 124;
-      }
-      usleep(10_000);
     }
-    kill "KILL", $pid;
-    waitpid($pid, 0);
-    exit 124;
-  }
-  usleep(10_000);
+    usleep(10_000);
 }
   ' "$timeout_ms" "$@"
 }
@@ -117,6 +117,8 @@ read_hook_payload_with_timeout() {
     cat
     return $?
   fi
+  # NOTE: Timeout-wrapped reads still run `cat`, so unexpectedly large stdin can be fully buffered.
+  # This is acceptable for expected hook payload sizes; switch to streaming/limits if that changes.
   run_with_timeout_ms "$STDIN_TIMEOUT_MS" cat
 }
 
