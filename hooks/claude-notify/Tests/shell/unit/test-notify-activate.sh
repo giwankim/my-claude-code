@@ -274,4 +274,93 @@ assert_file_contains "U028" "$ERR_LOG" "perl is required for timeout handling" \
   "notify.sh timeout-enabled probe reports missing perl runtime requirement" \
   "notify.sh timeout-enabled probe did not report missing perl runtime requirement"
 
+case_start "U029" "notify.sh tmux timeout path remains fast when stderr is captured"
+TMP_DIR=$(make_case_tmp_dir "U029")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_TMUX" <<'FAKE_TMUX_U029'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  sleep 2
+  printf '%s\n' "sess|1|win|1|%1|client-slow|/dev/ttys001"
+  exit 0
+fi
+exit 0
+FAKE_TMUX_U029
+chmod +x "$FAKE_TMUX"
+start_ms=$(now_ms)
+err=$(TMUX="/tmp/fake-socket,111,0" TMUX_PANE="%1" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_CMD_TIMEOUT_MS=100 NOTIFY_SENDER_MODE=off \
+  "$SCRIPT" "tmux timeout capture test" 2>&1 >/dev/null)
+rc=$?
+end_ms=$(now_ms)
+elapsed_ms=$((end_ms - start_ms))
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U029" "$rc" 0 \
+  "notify.sh tmux timeout capture probe exits 0" \
+  "notify.sh tmux timeout capture probe exited $rc"
+if [ "$elapsed_ms" -le 400 ]; then
+  pass "U029" "notify.sh tmux timeout capture probe exits quickly"
+else
+  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=400ms)"
+fi
+if echo "$err" | grep -q "unable to read tmux context"; then
+  pass "U029" "notify.sh tmux timeout capture probe emits fail-open warning"
+else
+  fail "U029" "notify.sh tmux timeout capture probe missing fail-open warning"
+fi
+
+case_start "U030" "notify.sh logs invalid timeout env values at debug level"
+TMP_DIR=$(make_case_tmp_dir "U030")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+DEBUG_LOG="$TMP_DIR/notify-debug.log"
+write_fake_notify "$FAKE_NOTIFY"
+TMUX="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_DEBUG_LOG="$DEBUG_LOG" \
+  NOTIFY_ACTIVATE_BUNDLE_ID="com.jetbrains.intellij" NOTIFY_SENDER_MODE=off \
+  NOTIFY_STDIN_TIMEOUT_MS="15O" "$SCRIPT" "invalid timeout debug test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U030" "$rc" 0 \
+  "notify.sh invalid-timeout debug probe exits 0" \
+  "notify.sh invalid-timeout debug probe exited $rc"
+assert_file_contains "U030" "$DEBUG_LOG" "invalid timeout value for NOTIFY_STDIN_TIMEOUT_MS='15O'; using default 150ms" \
+  "notify.sh logs invalid timeout env fallback at debug level" \
+  "notify.sh did not log invalid timeout env fallback at debug level"
+
+case_start "U031" "notify.sh routes tmux pane/metadata/client lookups through shared helper"
+assert_file_contains "U031" "$SCRIPT" "run_tmux_query_with_logging() {" \
+  "notify.sh defines shared tmux query logging helper" \
+  "notify.sh missing shared tmux query logging helper"
+if grep -q 'TARGET_PANE="$(run_tmux_query_with_logging' "$SCRIPT"; then
+  pass "U031" "notify.sh target pane lookup uses shared helper"
+else
+  fail "U031" "notify.sh target pane lookup does not use shared helper"
+fi
+tmux_info_helper_calls=$(grep -c 'TMUX_INFO="$(run_tmux_query_with_logging' "$SCRIPT")
+if [ "$tmux_info_helper_calls" -eq 2 ]; then
+  pass "U031" "notify.sh tmux metadata lookups use shared helper in both branches"
+else
+  fail "U031" "notify.sh tmux metadata helper call count was ${tmux_info_helper_calls} (expected 2)"
+fi
+if grep -q 'CLIENT_INFO="$(run_tmux_query_with_logging' "$SCRIPT"; then
+  pass "U031" "notify.sh client metadata lookup uses shared helper"
+else
+  fail "U031" "notify.sh client metadata lookup does not use shared helper"
+fi
+assert_file_not_contains "U031" "$SCRIPT" 'TARGET_PANE="$(tmux_query display-message -p' \
+  "notify.sh removed direct tmux_query target pane lookup" \
+  "notify.sh still has direct tmux_query target pane lookup"
+assert_file_not_contains "U031" "$SCRIPT" 'TMUX_INFO="$(tmux_query display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT")"' \
+  "notify.sh removed direct tmux_query metadata target lookup" \
+  "notify.sh still has direct tmux_query metadata target lookup"
+assert_file_not_contains "U031" "$SCRIPT" 'TMUX_INFO="$(tmux_query display-message -p "$TMUX_FORMAT")"' \
+  "notify.sh removed direct tmux_query metadata fallback lookup" \
+  "notify.sh still has direct tmux_query metadata fallback lookup"
+assert_file_not_contains "U031" "$SCRIPT" 'CLIENT_INFO="$(tmux_query display-message -p '\''#{client_name}|#{client_tty}'\'')"' \
+  "notify.sh removed direct tmux_query client metadata lookup" \
+  "notify.sh still has direct tmux_query client metadata lookup"
+
 finish
