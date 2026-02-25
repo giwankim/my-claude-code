@@ -63,7 +63,7 @@ Installed canonical hook path:
 This script accepts:
 
 - First argument as message text, or
-- JSON on stdin with `.message` (preferred) or `.last_assistant_message` (Stop/SubagentStop fallback).
+- JSON on stdin with non-empty `.message`, then non-empty `.last_assistant_message`, else default `"Waiting for input"`.
 
 ## Environment variables (`notify.sh`)
 

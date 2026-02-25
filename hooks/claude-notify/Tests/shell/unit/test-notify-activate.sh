@@ -148,6 +148,7 @@ elapsed=$((end_epoch - start_epoch))
 kill "$stdin_writer_pid" >/dev/null 2>&1 || true
 wait "$stdin_writer_pid" >/dev/null 2>&1 || true
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+wait_for_file_contains "$ARGS_LOG" "explicit stop message" 200 >/dev/null 2>&1 || true
 assert_rc_eq "U022" "$rc" 0 \
   "notify.sh explicit-message probe exits 0" \
   "notify.sh explicit-message probe exited $rc"
@@ -191,5 +192,44 @@ assert_rc_eq "U024" "$rc" 0 \
 assert_file_contains "U024" "$ARGS_LOG" "Final response from stop hook" \
   "notify.sh parses last_assistant_message fallback field" \
   "notify.sh did not parse last_assistant_message fallback field"
+
+case_start "U025" "notify.sh treats empty message as missing and falls back to last_assistant_message"
+TMP_DIR=$(make_case_tmp_dir "U025")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+printf '%s' '{"message":"","last_assistant_message":"Assistant fallback message"}' | TMUX="" NOTIFY_SENDER_MODE=off NOTIFY_STDIN_TIMEOUT_MS=200 \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U025" "$rc" 0 \
+  "notify.sh empty-message fallback probe exits 0" \
+  "notify.sh empty-message fallback probe exited $rc"
+assert_file_contains "U025" "$ARGS_LOG" "Assistant fallback message" \
+  "notify.sh falls back to last_assistant_message when message is empty" \
+  "notify.sh did not fall back to last_assistant_message for empty message"
+
+case_start "U026" "notify.sh logs activate probe failure when helper exits by signal"
+TMP_DIR=$(make_case_tmp_dir "U026")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_SIGNAL_OSASCRIPT="$TMP_DIR/fake-signal-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+DEBUG_LOG="$TMP_DIR/notify-debug.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_SIGNAL_OSASCRIPT" <<'FAKE_SIGNAL_OSASCRIPT_U026'
+#!/bin/sh
+kill -TERM "$$"
+FAKE_SIGNAL_OSASCRIPT_U026
+chmod +x "$FAKE_SIGNAL_OSASCRIPT"
+TMUX="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_DEBUG_LOG="$DEBUG_LOG" \
+  NOTIFY_ACTIVATE_BUNDLE_ID="" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_SIGNAL_OSASCRIPT" "$SCRIPT" "signal probe test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U026" "$rc" 0 \
+  "notify.sh signal-failure probe exits 0" \
+  "notify.sh signal-failure probe exited $rc"
+assert_file_contains "U026" "$DEBUG_LOG" "activate bundle inference failed rc=143" \
+  "notify.sh preserves signal exit when activate probe child is terminated" \
+  "notify.sh did not preserve signal exit code for activate probe child"
 
 finish

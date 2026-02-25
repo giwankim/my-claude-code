@@ -67,6 +67,21 @@ wait_for_file() {
   return 1
 }
 
+wait_for_file_contains() {
+  file="$1"
+  pattern="$2"
+  max_tries="${3:-30}"
+  i=0
+  while [ "$i" -lt "$max_tries" ]; do
+    if [ -f "$file" ] && grep -q -- "$pattern" "$file" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+
 finish() {
   printf '\nResults: %d passed, %d failed\n' "$PASS" "$FAIL"
   [ "$FAIL" -eq 0 ]
