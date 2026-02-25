@@ -63,7 +63,7 @@ Installed canonical hook path:
 This script accepts:
 
 - First argument as message text, or
-- JSON on stdin with `.message` field (Claude hook payload format).
+- JSON on stdin with `.message` (preferred) or `.last_assistant_message` (Stop/SubagentStop fallback).
 
 ## Environment variables (`notify.sh`)
 
@@ -74,13 +74,45 @@ This script accepts:
 - `NOTIFY_SENDER_APP_PATH`: spoof sender app bundle path override (default `claude-notify.app` next to `notify.sh`).
 - `NOTIFY_ACTIVATE_BUNDLE_ID`: optional app bundle activated on click (default auto-infers frontmost app at send time).
 - `NOTIFY_ACTIVATE_OSASCRIPT_BIN`: override `osascript` path used for frontmost-app activate inference (default `/usr/bin/osascript`).
+- `NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS`: timeout for activate-bundle inference probe calls (default `150`).
 - `NOTIFY_TMUX_BIN`: override tmux binary path.
+- `NOTIFY_TMUX_CMD_TIMEOUT_MS`: timeout for tmux metadata probe calls (default `200`).
 - `NOTIFY_TMUX_REDIRECT_SCRIPT`: override tmux click redirect helper path (default `tmux-redirect.sh` next to `notify.sh`).
+- `NOTIFY_STDIN_TIMEOUT_MS`: timeout for stdin hook payload reads when no `$1` message is provided (default `150`).
 - `NOTIFY_DEBUG_LOG`: enable debug logging to a file path.
 - `NOTIFY_TMUX_REDIRECT_LOG`: override tmux-redirect helper debug log path (defaults to `NOTIFY_DEBUG_LOG` when set).
 - `NOTIFY_ISOLATE_HELPER_BUNDLE_ID`: helper isolation toggle (default `1`).
 - `NOTIFY_ALLOW_NONISOLATED_RETRY`: fallback behavior toggle (default `0`).
 - `NOTIFY_OSASCRIPT_BIN`: override `osascript` path for delivery fallback when `UNUserNotificationCenter` is unavailable.
+
+## Stop hook recommendations (IDE terminals)
+
+For JetBrains terminals (IntelliJ/IDEA/WebStorm), use a fast-fail Stop hook config:
+
+- Pass an explicit stop message arg so Stop does not depend on stdin JSON timing.
+- Set per-hook `timeout` in Claude hook config.
+- Use `NOTIFY_SENDER_MODE=off` for lowest-friction Stop notifications.
+
+Example:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "NOTIFY_SENDER_MODE=off NOTIFY_TIMEOUT=15 /Users/gwk/.claude/hooks/claude-notify/notify.sh \"Claude finished\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ## Troubleshooting
 

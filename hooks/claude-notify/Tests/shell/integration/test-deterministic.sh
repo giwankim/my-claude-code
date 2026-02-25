@@ -13,6 +13,8 @@ RELAUNCH_MARKER="/tmp/claude-notify-relaunch-marker.$$"
 TEST_TMP_DIRS=""
 EXPECTED_NOTIFY_NAME=$(basename "$NOTIFY")
 export CLAUDE_NOTIFY_PID_FILE="$PID_FILE"
+export NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS="${NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS:-2000}"
+export NOTIFY_TMUX_CMD_TIMEOUT_MS="${NOTIFY_TMUX_CMD_TIMEOUT_MS:-2000}"
 
 drain_notify_pid_file() {
   max_tries="${1:-20}"
@@ -843,6 +845,93 @@ if grep -q "activate probe unavailable test" "$ARGS_LOG"; then
   pass "I129" "notify.sh still forwards notification payload when probe is unavailable"
 else
   fail "I129" "notify.sh did not forward notification payload when probe is unavailable"
+fi
+
+case_start "I130" "notify.sh tmux metadata lookup timeout fails open quickly"
+TMP_DIR=$(make_case_tmp_dir "I130")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_TMUX" <<'CASE_I130_TMUX'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  sleep 2
+  printf '%s\n' "sess|1|win|1|%1|client-slow|/dev/ttys001"
+  exit 0
+fi
+exit 0
+CASE_I130_TMUX
+chmod +x "$FAKE_TMUX"
+start_epoch=$(date +%s)
+err=$(TMUX="/tmp/fake-socket,111,0" TMUX_PANE="%1" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_CMD_TIMEOUT_MS=100 NOTIFY_SENDER_MODE=off "$SCRIPT" "tmux timeout test" 2>&1 >/dev/null)
+rc=$?
+end_epoch=$(date +%s)
+elapsed=$((end_epoch - start_epoch))
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I130" "notify.sh tmux-timeout probe exits 0"
+else
+  fail "I130" "notify.sh tmux-timeout probe exited $rc"
+fi
+if [ "$elapsed" -le 1 ]; then
+  pass "I130" "notify.sh tmux-timeout probe exits quickly"
+else
+  fail "I130" "notify.sh tmux-timeout probe took ${elapsed}s (expected <=1s)"
+fi
+if echo "$err" | grep -q "unable to read tmux context"; then
+  pass "I130" "notify.sh tmux-timeout probe emits fail-open warning"
+else
+  fail "I130" "notify.sh tmux-timeout probe missing fail-open warning"
+fi
+if grep -q -- "-execute" "$ARGS_LOG"; then
+  fail "I130" "notify.sh tmux-timeout probe unexpectedly included execute action"
+else
+  pass "I130" "notify.sh tmux-timeout probe omits execute action after timeout"
+fi
+
+case_start "I131" "notify.sh activate inference timeout outside tmux omits native -activate"
+TMP_DIR=$(make_case_tmp_dir "I131")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-timeout-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+cat > "$FAKE_ACTIVATE_OSASCRIPT" <<'CASE_I131_OSASCRIPT'
+#!/bin/sh
+sleep 2
+printf '%s\n' "com.jetbrains.intellij"
+exit 0
+CASE_I131_OSASCRIPT
+chmod +x "$FAKE_ACTIVATE_OSASCRIPT"
+start_epoch=$(date +%s)
+TMUX="" TERM_PROGRAM="JetBrains-JediTerm" NOTIFY_ACTIVATE_BUNDLE_ID="" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS=100 \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_SENDER_MODE=off \
+  "$SCRIPT" "activate timeout test" 2>/dev/null
+rc=$?
+end_epoch=$(date +%s)
+elapsed=$((end_epoch - start_epoch))
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I131" "notify.sh activate-timeout probe exits 0"
+else
+  fail "I131" "notify.sh activate-timeout probe exited $rc"
+fi
+if [ "$elapsed" -le 1 ]; then
+  pass "I131" "notify.sh activate-timeout probe exits quickly"
+else
+  fail "I131" "notify.sh activate-timeout probe took ${elapsed}s (expected <=1s)"
+fi
+if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
+  fail "I131" "notify.sh activate-timeout probe unexpectedly forwarded -activate"
+else
+  pass "I131" "notify.sh activate-timeout probe omits -activate on timeout"
+fi
+if grep -q "activate timeout test" "$ARGS_LOG"; then
+  pass "I131" "notify.sh activate-timeout probe still forwards notification payload"
+else
+  fail "I131" "notify.sh activate-timeout probe missing notification payload"
 fi
 
 finish

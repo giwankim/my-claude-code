@@ -17,9 +17,104 @@ ACTIVATE_OSASCRIPT_BIN="${NOTIFY_ACTIVATE_OSASCRIPT_BIN:-/usr/bin/osascript}"
 DEBUG_LOG="${NOTIFY_DEBUG_LOG:-}"
 TMUX_REDIRECT_LOG="${NOTIFY_TMUX_REDIRECT_LOG:-$DEBUG_LOG}"
 
+normalize_timeout_ms() {
+  timeout_value="$1"
+  timeout_default="$2"
+  case "$timeout_value" in
+    ''|*[!0-9]*)
+      printf '%s\n' "$timeout_default"
+      ;;
+    *)
+      printf '%s\n' "$timeout_value"
+      ;;
+  esac
+}
+
+STDIN_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_STDIN_TIMEOUT_MS:-}" "150")"
+TMUX_CMD_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_TMUX_CMD_TIMEOUT_MS:-}" "200")"
+ACTIVATE_PROBE_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS:-}" "150")"
+
 log_debug() {
   [ -n "$DEBUG_LOG" ] || return
   printf '%s [%d] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$$" "$1" >> "$DEBUG_LOG"
+}
+
+run_with_timeout_ms() {
+  timeout_ms="$1"
+  shift
+  perl -e '
+use strict;
+use warnings;
+use Time::HiRes qw(time usleep);
+
+my ($timeout_ms, @cmd) = @ARGV;
+if (!@cmd) {
+  exit 2;
+}
+
+if (!defined $timeout_ms || $timeout_ms !~ /^\d+$/ || $timeout_ms <= 0) {
+  exec @cmd;
+  exit 127;
+}
+
+my $timeout = $timeout_ms / 1000.0;
+my $pid = fork();
+if (!defined $pid) {
+  exit 2;
+}
+
+if ($pid == 0) {
+  exec @cmd;
+  exit 127;
+}
+
+my $deadline = time() + $timeout;
+while (1) {
+  my $result = waitpid($pid, 1);
+  if ($result == $pid) {
+    exit($? >> 8);
+  }
+  if ($result == -1) {
+    exit 1;
+  }
+  if (time() >= $deadline) {
+    kill "TERM", $pid;
+    for (1 .. 10) {
+      my $term_result = waitpid($pid, 1);
+      if ($term_result == $pid || $term_result == -1) {
+        exit 124;
+      }
+      usleep(10_000);
+    }
+    kill "KILL", $pid;
+    waitpid($pid, 0);
+    exit 124;
+  }
+  usleep(10_000);
+}
+  ' "$timeout_ms" "$@"
+}
+
+read_hook_payload_with_timeout() {
+  if [ "$STDIN_TIMEOUT_MS" -le 0 ]; then
+    cat
+    return $?
+  fi
+  run_with_timeout_ms "$STDIN_TIMEOUT_MS" cat
+}
+
+message_from_payload() {
+  payload="$1"
+  command -v jq >/dev/null 2>&1 || return 1
+  printf '%s' "$payload" | jq -r '.message // .last_assistant_message // "Waiting for input"' 2>/dev/null
+}
+
+tmux_query() {
+  if [ "$TMUX_CMD_TIMEOUT_MS" -le 0 ]; then
+    "$TMUX_BIN" "$@" 2>/dev/null
+    return $?
+  fi
+  run_with_timeout_ms "$TMUX_CMD_TIMEOUT_MS" "$TMUX_BIN" "$@" 2>/dev/null
 }
 
 # Quote a single shell argument for execute payload passed via sh -c.
@@ -30,14 +125,48 @@ shell_quote() {
 # Best-effort send-time inference; click-time foreground app may differ.
 infer_frontmost_activate_bundle_id() {
   [ -x "$ACTIVATE_OSASCRIPT_BIN" ] || return
-  "$ACTIVATE_OSASCRIPT_BIN" -e 'id of app (path to frontmost application as text)' 2>/dev/null | tr -d '\r'
+  if [ "$ACTIVATE_PROBE_TIMEOUT_MS" -le 0 ]; then
+    "$ACTIVATE_OSASCRIPT_BIN" -e 'id of app (path to frontmost application as text)' 2>/dev/null | tr -d '\r'
+    return
+  fi
+  inferred_bundle_id=$(run_with_timeout_ms "$ACTIVATE_PROBE_TIMEOUT_MS" "$ACTIVATE_OSASCRIPT_BIN" \
+    -e 'id of app (path to frontmost application as text)' 2>/dev/null)
+  infer_rc=$?
+  if [ "$infer_rc" -eq 124 ]; then
+    log_debug "activate bundle inference timed out after ${ACTIVATE_PROBE_TIMEOUT_MS}ms"
+    return
+  fi
+  if [ "$infer_rc" -ne 0 ]; then
+    log_debug "activate bundle inference failed rc=$infer_rc"
+    return
+  fi
+  printf '%s' "$inferred_bundle_id" | tr -d '\r'
 }
 
 # Read message from $1 (manual) or stdin JSON (Claude Code hook)
 if [ -n "$1" ]; then
   MESSAGE="$1"
 else
-  MESSAGE=$(jq -r '.message // "Waiting for input"')
+  MESSAGE="Waiting for input"
+  PAYLOAD="$(read_hook_payload_with_timeout)"
+  payload_rc=$?
+  if [ "$payload_rc" -eq 0 ]; then
+    if [ -n "$PAYLOAD" ]; then
+      parsed_message="$(message_from_payload "$PAYLOAD")"
+      parsed_rc=$?
+      if [ "$parsed_rc" -eq 0 ]; then
+        MESSAGE="$parsed_message"
+      else
+        log_debug "stdin payload parse failed; using fallback message"
+      fi
+    else
+      log_debug "stdin payload empty; using fallback message"
+    fi
+  elif [ "$payload_rc" -eq 124 ]; then
+    log_debug "stdin payload read timed out after ${STDIN_TIMEOUT_MS}ms; using fallback message"
+  else
+    log_debug "stdin payload read failed rc=$payload_rc; using fallback message"
+  fi
 fi
 log_debug "notify.sh start tmux=${TMUX:-<empty>} pane=${TMUX_PANE:-<empty>} term_program=${TERM_PROGRAM:-<empty>} sender_mode=$SENDER_MODE"
 
@@ -82,14 +211,31 @@ if [ -n "$TMUX" ]; then
   SOCKET=${TMUX%%,*}
   TARGET_PANE="$TMUX_PANE"
   if [ -z "$TARGET_PANE" ]; then
-    TARGET_PANE=$("$TMUX_BIN" display-message -p '#{pane_id}' 2>/dev/null)
+    TARGET_PANE="$(tmux_query display-message -p '#{pane_id}')"
+    target_pane_rc=$?
+    if [ "$target_pane_rc" -eq 124 ]; then
+      log_debug "tmux pane lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms"
+      TARGET_PANE=""
+    elif [ "$target_pane_rc" -ne 0 ]; then
+      log_debug "tmux pane lookup failed rc=$target_pane_rc"
+      TARGET_PANE=""
+    fi
   fi
 
   TMUX_FORMAT="$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT"
   if [ -n "$TARGET_PANE" ]; then
-    TMUX_INFO=$("$TMUX_BIN" display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT" 2>/dev/null)
+    TMUX_INFO="$(tmux_query display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT")"
+    tmux_info_rc=$?
   else
-    TMUX_INFO=$("$TMUX_BIN" display-message -p "$TMUX_FORMAT" 2>/dev/null)
+    TMUX_INFO="$(tmux_query display-message -p "$TMUX_FORMAT")"
+    tmux_info_rc=$?
+  fi
+  if [ "$tmux_info_rc" -eq 124 ]; then
+    log_debug "tmux metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms"
+    TMUX_INFO=""
+  elif [ "$tmux_info_rc" -ne 0 ]; then
+    log_debug "tmux metadata lookup failed rc=$tmux_info_rc"
+    TMUX_INFO=""
   fi
 
   if [ -n "$TMUX_INFO" ]; then
@@ -104,7 +250,15 @@ if [ -n "$TMUX" ]; then
         CLIENT_TTY=${TMUX_INFO#*|}
 
         if [ -z "$CLIENT_NAME" ] && [ -z "$CLIENT_TTY" ]; then
-          CLIENT_INFO=$("$TMUX_BIN" display-message -p '#{client_name}|#{client_tty}' 2>/dev/null)
+          CLIENT_INFO="$(tmux_query display-message -p '#{client_name}|#{client_tty}')"
+          client_info_rc=$?
+          if [ "$client_info_rc" -eq 124 ]; then
+            log_debug "tmux client metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms"
+            CLIENT_INFO=""
+          elif [ "$client_info_rc" -ne 0 ]; then
+            log_debug "tmux client metadata lookup failed rc=$client_info_rc"
+            CLIENT_INFO=""
+          fi
           case "$CLIENT_INFO" in
             *"|"*)
               CLIENT_NAME=${CLIENT_INFO%%|*}

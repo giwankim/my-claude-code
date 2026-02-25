@@ -8,6 +8,8 @@ PROJECT_DIR="$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)"
 
 SCRIPT="$PROJECT_DIR/notify.sh"
 TEST_TMP_DIRS=""
+export NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS="${NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS:-2000}"
+export NOTIFY_TMUX_CMD_TIMEOUT_MS="${NOTIFY_TMUX_CMD_TIMEOUT_MS:-2000}"
 
 cleanup() {
   cleanup_registered_tmp_dirs
@@ -97,5 +99,97 @@ fi
 assert_file_contains "U020" "$ARGS_LOG" "tmux-redirect.sh'.*'com.jetbrains.intellij'" \
   "notify.sh passes inferred activate bundle to tmux redirect execute payload" \
   "notify.sh did not carry inferred activate bundle in tmux execute payload"
+
+case_start "U021" "notify.sh times out stdin read and falls back to default message"
+TMP_DIR=$(make_case_tmp_dir "U021")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+FIFO="$TMP_DIR/hook-input.fifo"
+write_fake_notify "$FAKE_NOTIFY"
+mkfifo "$FIFO"
+(sleep 300) > "$FIFO" &
+stdin_writer_pid=$!
+start_epoch=$(date +%s)
+TMUX="" NOTIFY_SENDER_MODE=off NOTIFY_STDIN_TIMEOUT_MS=80 NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  "$SCRIPT" < "$FIFO" 2>/dev/null
+rc=$?
+end_epoch=$(date +%s)
+elapsed=$((end_epoch - start_epoch))
+kill "$stdin_writer_pid" >/dev/null 2>&1 || true
+wait "$stdin_writer_pid" >/dev/null 2>&1 || true
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U021" "$rc" 0 \
+  "notify.sh stdin-timeout probe exits 0" \
+  "notify.sh stdin-timeout probe exited $rc"
+if [ "$elapsed" -le 1 ]; then
+  pass "U021" "notify.sh stdin-timeout probe exits quickly"
+else
+  fail "U021" "notify.sh stdin-timeout probe took ${elapsed}s (expected <=1s)"
+fi
+assert_file_contains "U021" "$ARGS_LOG" "Waiting for input" \
+  "notify.sh stdin-timeout probe falls back to default message" \
+  "notify.sh stdin-timeout probe missing fallback message"
+
+case_start "U022" "notify.sh explicit message bypasses stdin read timeout path"
+TMP_DIR=$(make_case_tmp_dir "U022")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+FIFO="$TMP_DIR/hook-input.fifo"
+write_fake_notify "$FAKE_NOTIFY"
+mkfifo "$FIFO"
+(sleep 300) > "$FIFO" &
+stdin_writer_pid=$!
+start_epoch=$(date +%s)
+TMUX="" NOTIFY_SENDER_MODE=off NOTIFY_STDIN_TIMEOUT_MS=5000 NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  "$SCRIPT" "explicit stop message" < "$FIFO" 2>/dev/null
+rc=$?
+end_epoch=$(date +%s)
+elapsed=$((end_epoch - start_epoch))
+kill "$stdin_writer_pid" >/dev/null 2>&1 || true
+wait "$stdin_writer_pid" >/dev/null 2>&1 || true
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U022" "$rc" 0 \
+  "notify.sh explicit-message probe exits 0" \
+  "notify.sh explicit-message probe exited $rc"
+if [ "$elapsed" -le 1 ]; then
+  pass "U022" "notify.sh explicit-message probe returns quickly"
+else
+  fail "U022" "notify.sh explicit-message probe took ${elapsed}s (expected <=1s)"
+fi
+assert_file_contains "U022" "$ARGS_LOG" "explicit stop message" \
+  "notify.sh explicit-message probe forwards argument payload" \
+  "notify.sh explicit-message probe missing argument payload"
+
+case_start "U023" "notify.sh invalid stdin JSON falls back without blocking"
+TMP_DIR=$(make_case_tmp_dir "U023")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+printf '%s' '{invalid-json' | TMUX="" NOTIFY_SENDER_MODE=off NOTIFY_STDIN_TIMEOUT_MS=200 NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  "$SCRIPT" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U023" "$rc" 0 \
+  "notify.sh invalid-json probe exits 0" \
+  "notify.sh invalid-json probe exited $rc"
+assert_file_contains "U023" "$ARGS_LOG" "Waiting for input" \
+  "notify.sh invalid-json probe falls back to default message" \
+  "notify.sh invalid-json probe missing fallback message"
+
+case_start "U024" "notify.sh uses last_assistant_message when message field is missing"
+TMP_DIR=$(make_case_tmp_dir "U024")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+printf '%s' '{"last_assistant_message":"Final response from stop hook"}' | TMUX="" NOTIFY_SENDER_MODE=off NOTIFY_STDIN_TIMEOUT_MS=200 \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" "$SCRIPT" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U024" "$rc" 0 \
+  "notify.sh last_assistant_message probe exits 0" \
+  "notify.sh last_assistant_message probe exited $rc"
+assert_file_contains "U024" "$ARGS_LOG" "Final response from stop hook" \
+  "notify.sh parses last_assistant_message fallback field" \
+  "notify.sh did not parse last_assistant_message fallback field"
 
 finish
