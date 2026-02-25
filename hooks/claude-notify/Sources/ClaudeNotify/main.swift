@@ -40,12 +40,14 @@ final class LockedDataBuffer: @unchecked Sendable {
   private let lock = NSLock()
   private var data = Data()
 
+  /// Appends a chunk of bytes while holding the buffer lock.
   func append(_ chunk: Data) {
     lock.lock()
     data.append(chunk)
     lock.unlock()
   }
 
+  /// Returns a consistent snapshot of the buffered bytes.
   func snapshot() -> Data {
     lock.lock()
     defer { lock.unlock() }
@@ -461,6 +463,7 @@ func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
     .deletingLastPathComponent()
 
   let markerPath = ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER"]
+  /// Records relaunch phase markers for deterministic test assertions.
   func writeRelaunchMarker(_ line: String) {
     guard let markerPath else { return }
     try? "\(line)\n".write(toFile: markerPath, atomically: true, encoding: .utf8)
