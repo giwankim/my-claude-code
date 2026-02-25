@@ -93,11 +93,9 @@ if ($pid == 0) {
   exit 127;
 }
 
-my $use_process_group_kill = 0;
-if (setpgid($pid, $pid) == 0) {
-  $use_process_group_kill = 1;
-}
-my $kill_target = $use_process_group_kill ? -$pid : $pid;
+# The child always attempts setpgid(0, 0) before exec, so timeout signals
+# should target the child process group unconditionally.
+my $kill_target = -$pid;
 
 my $deadline = time() + $timeout;
 while (1) {

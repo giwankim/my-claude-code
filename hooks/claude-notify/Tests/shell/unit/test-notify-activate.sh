@@ -363,4 +363,15 @@ assert_file_not_contains "U031" "$SCRIPT" 'CLIENT_INFO="$(tmux_query display-mes
   "notify.sh removed direct tmux_query client metadata lookup" \
   "notify.sh still has direct tmux_query client metadata lookup"
 
+case_start "U032" "notify.sh timeout kill target always uses child process group"
+assert_file_contains "U032" "$SCRIPT" 'my $kill_target = -$pid;' \
+  "notify.sh sets timeout kill target to child process group unconditionally" \
+  "notify.sh does not set unconditional process-group kill target"
+assert_file_not_contains "U032" "$SCRIPT" 'my $use_process_group_kill = 0;' \
+  "notify.sh removes conditional process-group kill flag logic" \
+  "notify.sh still has conditional process-group kill flag logic"
+assert_file_not_contains "U032" "$SCRIPT" 'if (setpgid($pid, $pid) == 0)' \
+  "notify.sh removes parent-side setpgid race path" \
+  "notify.sh still has parent-side setpgid race path"
+
 finish
