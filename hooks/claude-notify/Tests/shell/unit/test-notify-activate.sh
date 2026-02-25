@@ -232,4 +232,46 @@ assert_file_contains "U026" "$DEBUG_LOG" "activate bundle inference failed rc=14
   "notify.sh preserves signal exit when activate probe child is terminated" \
   "notify.sh did not preserve signal exit code for activate probe child"
 
+case_start "U027" "notify.sh skips perl runtime guard when all timeout wrappers are disabled"
+TMP_DIR=$(make_case_tmp_dir "U027")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+EMPTY_PATH="$TMP_DIR/empty-path"
+mkdir -p "$EMPTY_PATH"
+write_fake_notify "$FAKE_NOTIFY"
+PATH="$EMPTY_PATH" TMUX="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_ACTIVATE_BUNDLE_ID="com.jetbrains.intellij" NOTIFY_STDIN_TIMEOUT_MS=0 \
+  NOTIFY_TMUX_CMD_TIMEOUT_MS=0 NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS=0 \
+  "$SCRIPT" "timeouts disabled perl test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U027" "$rc" 0 \
+  "notify.sh all-timeouts-disabled probe exits 0 without perl on PATH" \
+  "notify.sh all-timeouts-disabled probe exited $rc"
+assert_file_contains "U027" "$ARGS_LOG" "timeouts disabled perl test" \
+  "notify.sh all-timeouts-disabled probe still dispatches notification" \
+  "notify.sh all-timeouts-disabled probe did not dispatch notification"
+
+case_start "U028" "notify.sh requires perl runtime when any timeout wrapper is enabled"
+TMP_DIR=$(make_case_tmp_dir "U028")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+EMPTY_PATH="$TMP_DIR/empty-path"
+ERR_LOG="$TMP_DIR/notify.err"
+mkdir -p "$EMPTY_PATH"
+write_fake_notify "$FAKE_NOTIFY"
+PATH="$EMPTY_PATH" TMUX="" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_ACTIVATE_BUNDLE_ID="com.jetbrains.intellij" NOTIFY_STDIN_TIMEOUT_MS=1 \
+  NOTIFY_TMUX_CMD_TIMEOUT_MS=0 NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS=0 \
+  "$SCRIPT" "timeouts enabled perl test" 2>"$ERR_LOG"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  pass "U028" "notify.sh timeout-enabled probe fails fast without perl on PATH"
+else
+  fail "U028" "notify.sh timeout-enabled probe unexpectedly succeeded without perl on PATH"
+fi
+assert_file_contains "U028" "$ERR_LOG" "perl is required for timeout handling" \
+  "notify.sh timeout-enabled probe reports missing perl runtime requirement" \
+  "notify.sh timeout-enabled probe did not report missing perl runtime requirement"
+
 finish

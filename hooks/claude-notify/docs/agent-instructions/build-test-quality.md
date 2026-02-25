@@ -32,7 +32,7 @@ make check-cases-e2e
 - Every scenario must be listed in `Tests/required-cases.txt`.
 - Enforced by `make check-cases-*`.
 - Active ranges:
-  - Unit: `U001-U026`
+  - Unit: `U001-U028`
   - Integration (Swift): `I001-I005`
   - Integration (shell): `I101-I131`
   - E2E (shell): `E001-E013`

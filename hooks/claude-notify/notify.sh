@@ -45,7 +45,10 @@ require_perl_timeout_runtime() {
   fi
 }
 
-require_perl_timeout_runtime
+# Perl timeout runtime is required only when at least one timeout wrapper is enabled.
+if [ "$STDIN_TIMEOUT_MS" -gt 0 ] || [ "$TMUX_CMD_TIMEOUT_MS" -gt 0 ] || [ "$ACTIVATE_PROBE_TIMEOUT_MS" -gt 0 ]; then
+  require_perl_timeout_runtime
+fi
 
 log_debug() {
   [ -n "$DEBUG_LOG" ] || return
