@@ -69,11 +69,15 @@ if ($pid == 0) {
 }
 
 my $deadline = time() + $timeout;
-while (1) {
-  my $result = waitpid($pid, 1);
-  if ($result == $pid) {
-    exit($? >> 8);
-  }
+  while (1) {
+    my $result = waitpid($pid, 1);
+    if ($result == $pid) {
+      my $status = $?;
+      if (($status & 127) != 0) {
+        exit(128 + ($status & 127));
+      }
+      exit($status >> 8);
+    }
   if ($result == -1) {
     exit 1;
   }
@@ -106,7 +110,7 @@ read_hook_payload_with_timeout() {
 message_from_payload() {
   payload="$1"
   command -v jq >/dev/null 2>&1 || return 1
-  printf '%s' "$payload" | jq -r '.message // .last_assistant_message // "Waiting for input"' 2>/dev/null
+  printf '%s' "$payload" | jq -r '(.message | select(type == "string" and length > 0)) // (.last_assistant_message | select(type == "string" and length > 0)) // "Waiting for input"' 2>/dev/null
 }
 
 tmux_query() {
