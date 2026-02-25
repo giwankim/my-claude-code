@@ -17,6 +17,10 @@ case_start() {
   printf 'Case %s: %s\n' "$1" "$2"
 }
 
+now_ms() {
+  perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
+}
+
 wait_for_pid_file() {
   pid_file="$1"
   max_tries="${2:-50}"
