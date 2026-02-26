@@ -82,6 +82,12 @@ This script accepts:
 - `NOTIFY_ALLOW_NONISOLATED_RETRY`: fallback behavior toggle (default `0`).
 - `NOTIFY_OSASCRIPT_BIN`: override `osascript` path for delivery fallback when `UNUserNotificationCenter` is unavailable.
 
+## Stop-hook non-blocking contract
+
+`notify.sh` launches the notifier as a fully detached background process (`stdin/stdout/stderr` all redirected to `/dev/null`) in both tmux and non-tmux paths.
+
+This detachment is required for hook runners that capture stdio through pipes: if a background child inherits the pipe FDs, the runner can block until the child exits or user interaction occurs. Fully detached launch keeps `Stop` non-blocking regardless of notification click behavior.
+
 ## Troubleshooting
 
 - Binary missing:
@@ -105,6 +111,10 @@ This script accepts:
 - Notification authorization denied:
   - The binary now attempts an AppleScript fallback (`display notification`) when native notification authorization or posting fails.
   - You can override the fallback binary path with `NOTIFY_OSASCRIPT_BIN` (or `CLAUDE_NOTIFY_OSASCRIPT_BIN`).
+- Stop appears to hang until notification click:
+  - Ensure `Stop` hook command is configured with `"async": true`.
+  - Keep `NOTIFY_TIMEOUT` small for `Stop` (recommended `5`) and keep hook `timeout` bounded.
+  - Run `make install` so `~/.claude/hooks/claude-notify/notify.sh` matches repo source.
 
 ## Maintenance notes
 

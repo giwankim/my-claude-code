@@ -41,6 +41,24 @@ FAKE_NOTIFY_SCRIPT
   chmod +x "$script_path"
 }
 
+write_sleeping_fake_notify() {
+  script_path="$1"
+  sleep_seconds="${2:-2}"
+  cat > "$script_path" <<FAKE_SLEEPING_NOTIFY_SCRIPT
+#!/bin/sh
+i=0
+for arg in "\$@"; do
+  if [ -n "\${NOTIFY_ARGS_LOG:-}" ]; then
+    printf '[%d]=%s\n' "\$i" "\$arg" >> "\$NOTIFY_ARGS_LOG"
+  fi
+  i=\$((i + 1))
+done
+sleep "$sleep_seconds"
+exit 0
+FAKE_SLEEPING_NOTIFY_SCRIPT
+  chmod +x "$script_path"
+}
+
 write_fake_origin_exec() {
   script_path="$1"
   cat > "$script_path" <<'FAKE_ORIGIN_SCRIPT'

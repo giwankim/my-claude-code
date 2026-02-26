@@ -98,4 +98,92 @@ assert_file_contains "U020" "$ARGS_LOG" "tmux-redirect.sh'.*'com.jetbrains.intel
   "notify.sh passes inferred activate bundle to tmux redirect execute payload" \
   "notify.sh did not carry inferred activate bundle in tmux execute payload"
 
+case_start "U021" "notify.sh outside tmux returns quickly when piped to cat"
+TMP_DIR=$(make_case_tmp_dir "U021")
+FAKE_NOTIFY="$TMP_DIR/fake-sleeping-notify.sh"
+write_sleeping_fake_notify "$FAKE_NOTIFY" 3
+start=$(date +%s)
+TMUX="" NOTIFY_ACTIVATE_BUNDLE_ID="com.example.stop-detach" NOTIFY_BIN="$FAKE_NOTIFY" \
+  "$SCRIPT" "unit outside pipe detach test" | cat >/dev/null
+rc=$?
+elapsed=$(( $(date +%s) - start ))
+assert_rc_eq "U021" "$rc" 0 \
+  "notify.sh outside-tmux pipe probe exits 0" \
+  "notify.sh outside-tmux pipe probe exited $rc"
+if [ "$elapsed" -le 1 ]; then
+  pass "U021" "notify.sh outside-tmux pipe probe returned in ${elapsed}s"
+else
+  fail "U021" "notify.sh outside-tmux pipe probe took ${elapsed}s (expected <=1s)"
+fi
+
+case_start "U022" "notify.sh tmux mode returns quickly when piped to cat"
+TMP_DIR=$(make_case_tmp_dir "U022")
+FAKE_NOTIFY="$TMP_DIR/fake-sleeping-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+write_sleeping_fake_notify "$FAKE_NOTIFY" 3
+cat > "$FAKE_TMUX" <<'FAKE_TMUX_U022'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|9|win|1|%42|client-u|/dev/ttys042"
+  exit 0
+fi
+exit 0
+FAKE_TMUX_U022
+chmod +x "$FAKE_TMUX"
+start=$(date +%s)
+TMUX="/tmp/fake-socket,999,0" TMUX_PANE="%42" NOTIFY_ACTIVATE_BUNDLE_ID="com.example.stop-detach" \
+  NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_TMUX_BIN="$FAKE_TMUX" "$SCRIPT" "unit tmux pipe detach test" | cat >/dev/null
+rc=$?
+elapsed=$(( $(date +%s) - start ))
+assert_rc_eq "U022" "$rc" 0 \
+  "notify.sh tmux pipe probe exits 0" \
+  "notify.sh tmux pipe probe exited $rc"
+if [ "$elapsed" -le 1 ]; then
+  pass "U022" "notify.sh tmux pipe probe returned in ${elapsed}s"
+else
+  fail "U022" "notify.sh tmux pipe probe took ${elapsed}s (expected <=1s)"
+fi
+
+case_start "U023" "notify.sh detached launch keeps args while returning quickly"
+TMP_DIR=$(make_case_tmp_dir "U023")
+FAKE_NOTIFY="$TMP_DIR/fake-sleeping-notify.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+write_sleeping_fake_notify "$FAKE_NOTIFY" 2
+start=$(date +%s)
+TMUX="" NOTIFY_ACTIVATE_BUNDLE_ID="com.example.stop-detach" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TIMEOUT=9 "$SCRIPT" "unit detached args test" | cat >/dev/null
+rc=$?
+elapsed=$(( $(date +%s) - start ))
+assert_rc_eq "U023" "$rc" 0 \
+  "notify.sh detached args probe exits 0" \
+  "notify.sh detached args probe exited $rc"
+if [ "$elapsed" -le 1 ]; then
+  pass "U023" "notify.sh detached args probe returned in ${elapsed}s"
+else
+  fail "U023" "notify.sh detached args probe took ${elapsed}s (expected <=1s)"
+fi
+if wait_for_file "$ARGS_LOG" 30 >/dev/null 2>&1; then
+  pass "U023" "notify.sh detached args probe produced args log"
+else
+  fail "U023" "notify.sh detached args probe did not produce args log"
+fi
+assert_file_contains "U023" "$ARGS_LOG" '\]=-message$' \
+  "notify.sh detached args probe includes -message flag" \
+  "notify.sh detached args probe missing -message flag"
+assert_file_contains "U023" "$ARGS_LOG" '\]=unit detached args test$' \
+  "notify.sh detached args probe forwards message payload" \
+  "notify.sh detached args probe missing message payload"
+assert_file_contains "U023" "$ARGS_LOG" '\]=-group$' \
+  "notify.sh detached args probe includes -group flag" \
+  "notify.sh detached args probe missing -group flag"
+assert_file_contains "U023" "$ARGS_LOG" '\]=claude-code$' \
+  "notify.sh detached args probe forwards claude-code group" \
+  "notify.sh detached args probe missing claude-code group"
+assert_file_contains "U023" "$ARGS_LOG" '\]=-timeout$' \
+  "notify.sh detached args probe includes -timeout flag" \
+  "notify.sh detached args probe missing -timeout flag"
+assert_file_contains "U023" "$ARGS_LOG" '\]=9$' \
+  "notify.sh detached args probe forwards configured timeout" \
+  "notify.sh detached args probe missing configured timeout"
+
 finish

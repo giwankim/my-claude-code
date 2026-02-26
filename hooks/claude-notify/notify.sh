@@ -58,6 +58,11 @@ notify_run() {
     CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@"
 }
 
+# Launch notifier detached from hook stdio so hook runners do not wait on inherited pipes.
+notify_run_detached() {
+  notify_run "$@" </dev/null >/dev/null 2>&1 &
+}
+
 tmux_notify() {
   subtitle="$1"
   execute_cmd="$2"
@@ -74,7 +79,7 @@ tmux_notify() {
     set -- "$@" -execute "$execute_cmd"
   fi
 
-  NOTIFY_ACTIVATE_OVERRIDE="" notify_run "$@" &
+  NOTIFY_ACTIVATE_OVERRIDE="" notify_run_detached "$@"
 }
 
 if [ -n "$TMUX" ]; then
@@ -156,9 +161,9 @@ else
     log_debug "inferred activate bundle id outside tmux: ${ACTIVATE_BUNDLE_ID:-<empty>}"
   fi
   log_debug "running outside tmux; execute action omitted"
-  notify_run \
+  notify_run_detached \
     -title "Claude Code" \
     -message "$MESSAGE" \
     -sound default \
-    -group "claude-code" &
+    -group "claude-code"
 fi
