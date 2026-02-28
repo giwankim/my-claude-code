@@ -1,5 +1,5 @@
 #!/bin/sh
-# Usage: tmux-redirect.sh <tmux_bin> <socket> <pane_id> <pane_index> [client_name] [client_tty] [activate_bundle_id] [debug_log]
+# Usage: tmux-redirect.sh <tmux_bin> <socket> <pane_id> <pane_index> [client_name] [client_tty] [activate_bundle_id] [debug_log] [activation_source]
 
 TMUX_BIN="$1"
 SOCKET="$2"
@@ -9,6 +9,7 @@ CLIENT_NAME="$5"
 CLIENT_TTY="$6"
 ACTIVATE_BUNDLE_ID="$7"
 DEBUG_LOG="$8"
+ACTIVATION_SOURCE="$9"
 ACTIVATE_OSASCRIPT_BIN="${NOTIFY_ACTIVATE_OSASCRIPT_BIN:-/usr/bin/osascript}"
 
 log_debug() {
@@ -27,11 +28,14 @@ if [ -z "$TMUX_BIN" ] || [ -z "$SOCKET" ] || [ -z "$PANE_TARGET_ID" ] || [ -z "$
   log_debug "skip redirect due to missing args tmux_bin=${TMUX_BIN:-<empty>} socket=${SOCKET:-<empty>} pane_id=${PANE_TARGET_ID:-<empty>} pane_index=${PANE_TARGET_INDEX:-<empty>}"
   exit 0
 fi
-log_debug "start redirect socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>}"
+log_debug "start redirect socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>} activation_source=${ACTIVATION_SOURCE:-<empty>}"
 
 activate_bundle() {
-  [ -n "$ACTIVATE_BUNDLE_ID" ] || return 0
-  log_debug "activating bundle id $ACTIVATE_BUNDLE_ID"
+  if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
+    log_debug "activation skipped activation_source=${ACTIVATION_SOURCE:-<empty>} bundle_id=<empty>"
+    return 0
+  fi
+  log_debug "activating bundle id $ACTIVATE_BUNDLE_ID activation_source=${ACTIVATION_SOURCE:-<empty>}"
   if [ -x "$ACTIVATE_OSASCRIPT_BIN" ]; then
     "$ACTIVATE_OSASCRIPT_BIN" -e 'on run argv
   tell application id (item 1 of argv) to activate

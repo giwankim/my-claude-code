@@ -9,13 +9,15 @@ SENDER_APP_PATH="${NOTIFY_SENDER_APP_PATH:-$SCRIPT_DIR/claude-notify.app}"
 NOTIFY_TIMEOUT="${NOTIFY_TIMEOUT:-90}"
 TMUX_BIN="${NOTIFY_TMUX_BIN:-$(command -v tmux 2>/dev/null || printf '%s' /opt/homebrew/bin/tmux)}"
 TMUX_REDIRECT_SCRIPT="${NOTIFY_TMUX_REDIRECT_SCRIPT:-$SCRIPT_DIR/tmux-redirect.sh}"
-NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}'
+NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}|#{client_pid}'
+TMUX_ACTIVATE_FALLBACK="${NOTIFY_TMUX_ACTIVATE_FALLBACK:-none}"
 NOTIFY_ISOLATE_HELPER_BUNDLE_ID="${NOTIFY_ISOLATE_HELPER_BUNDLE_ID:-1}"
 NOTIFY_ALLOW_NONISOLATED_RETRY="${NOTIFY_ALLOW_NONISOLATED_RETRY:-0}"
 ACTIVATE_BUNDLE_ID="${NOTIFY_ACTIVATE_BUNDLE_ID:-}"
 ACTIVATE_OSASCRIPT_BIN="${NOTIFY_ACTIVATE_OSASCRIPT_BIN:-/usr/bin/osascript}"
 DEBUG_LOG="${NOTIFY_DEBUG_LOG:-}"
 TMUX_REDIRECT_LOG="${NOTIFY_TMUX_REDIRECT_LOG:-$DEBUG_LOG}"
+PS_BIN="${NOTIFY_PS_BIN:-ps}"
 
 log_debug() {
   [ -n "$DEBUG_LOG" ] || return
@@ -40,9 +42,23 @@ normalize_timeout_ms() {
   esac
 }
 
+normalize_tmux_activate_fallback() {
+  fallback_value="$1"
+  case "$fallback_value" in
+    frontmost|none)
+      printf '%s\n' "$fallback_value"
+      ;;
+    *)
+      log_debug "invalid tmux activate fallback '${fallback_value}'; using default none"
+      printf '%s\n' "none"
+      ;;
+  esac
+}
+
 STDIN_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_STDIN_TIMEOUT_MS:-}" "150" "NOTIFY_STDIN_TIMEOUT_MS")"
 TMUX_CMD_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_TMUX_CMD_TIMEOUT_MS:-}" "200" "NOTIFY_TMUX_CMD_TIMEOUT_MS")"
 ACTIVATE_PROBE_TIMEOUT_MS="$(normalize_timeout_ms "${NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS:-}" "150" "NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS")"
+TMUX_ACTIVATE_FALLBACK="$(normalize_tmux_activate_fallback "$TMUX_ACTIVATE_FALLBACK")"
 
 require_perl_timeout_runtime() {
   if ! command -v perl >/dev/null 2>&1; then
@@ -147,32 +163,6 @@ message_from_payload() {
   printf '%s' "$payload" | jq -r '(.message | select(type == "string" and length > 0)) // (.last_assistant_message | select(type == "string" and length > 0)) // "Waiting for input"' 2>/dev/null
 }
 
-tmux_query() {
-  if [ "$TMUX_CMD_TIMEOUT_MS" -le 0 ]; then
-    "$TMUX_BIN" "$@" 2>/dev/null
-    return $?
-  fi
-  run_with_timeout_ms "$TMUX_CMD_TIMEOUT_MS" "$TMUX_BIN" "$@" 2>/dev/null
-}
-
-run_tmux_query_with_logging() {
-  timeout_log_message="$1"
-  failure_log_prefix="$2"
-  shift 2
-
-  tmux_output="$(tmux_query "$@")"
-  tmux_query_rc=$?
-  if [ "$tmux_query_rc" -eq 124 ]; then
-    log_debug "$timeout_log_message"
-    return 124
-  fi
-  if [ "$tmux_query_rc" -ne 0 ]; then
-    log_debug "$failure_log_prefix rc=$tmux_query_rc"
-    return "$tmux_query_rc"
-  fi
-  printf '%s' "$tmux_output"
-}
-
 # Quote a single shell argument for execute payload passed via sh -c.
 shell_quote() {
   printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
@@ -197,6 +187,94 @@ infer_frontmost_activate_bundle_id() {
     return
   fi
   printf '%s' "$inferred_bundle_id" | tr -d '\r'
+}
+
+resolve_bundle_id_from_app_path() {
+  app_path="$1"
+  plist_path="$app_path/Contents/Info.plist"
+  [ -r "$plist_path" ] || return 1
+  /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist_path" 2>/dev/null | tr -d '\r'
+}
+
+extract_app_exec_from_args() {
+  proc_args="$1"
+  case "$proc_args" in
+    *".app/Contents/MacOS/"*)
+      raw_prefix="${proc_args%%.app/Contents/MacOS/*}"
+      trimmed_prefix="$raw_prefix"
+      case "$raw_prefix" in
+        *" /"*)
+          trimmed_prefix="/${raw_prefix##* /}"
+          ;;
+      esac
+      app_path="${trimmed_prefix}.app"
+      exec_tail="${proc_args#*.app/Contents/MacOS/}"
+      exec_name="${exec_tail%% *}"
+      if [ -n "$app_path" ] && [ -n "$exec_name" ]; then
+        printf '%s\n' "$app_path/Contents/MacOS/$exec_name"
+      fi
+      ;;
+  esac
+}
+
+resolve_tmux_client_host_bundle_id() {
+  resolver_client_pid="$1"
+  resolver_client_tty="$2"
+  resolver_client_name="$3"
+  resolver_socket="$4"
+  TMUX_RESOLVED_APP_PATH=""
+  TMUX_RESOLVED_BUNDLE_ID=""
+
+  if [ -z "$resolver_client_pid" ]; then
+    log_debug "tmux client host resolver failure reason=no-client-pid client_name=${resolver_client_name:-<empty>} client_tty=${resolver_client_tty:-<empty>} socket=${resolver_socket:-<empty>}"
+    return 1
+  fi
+  case "$resolver_client_pid" in
+    ''|*[!0-9]*)
+      log_debug "tmux client host resolver failure reason=invalid-client-pid client_pid=${resolver_client_pid:-<empty>} client_name=${resolver_client_name:-<empty>} client_tty=${resolver_client_tty:-<empty>} socket=${resolver_socket:-<empty>}"
+      return 1
+      ;;
+  esac
+
+  current_pid="$resolver_client_pid"
+  depth=0
+  while [ "$depth" -lt 40 ]; do
+    proc_line="$("$PS_BIN" -p "$current_pid" -o ppid= -o args= 2>/dev/null | awk 'NR==1{sub(/^[[:space:]]+/, "", $0); print; exit}')"
+    if [ -z "$proc_line" ]; then
+      log_debug "tmux client host resolver failure reason=ancestry-scan-miss start_pid=$resolver_client_pid missing_pid=$current_pid"
+      return 1
+    fi
+
+    parent_pid="$(printf '%s\n' "$proc_line" | awk '{print $1}')"
+    proc_args="$(printf '%s\n' "$proc_line" | sed -E 's/^[[:space:]]*[0-9]+[[:space:]]*//')"
+    app_exec="$(extract_app_exec_from_args "$proc_args")"
+    if [ -n "$app_exec" ]; then
+      app_path="${app_exec%/Contents/MacOS/*}"
+      resolved_bundle_id="$(resolve_bundle_id_from_app_path "$app_path")"
+      if [ -n "$resolved_bundle_id" ]; then
+        TMUX_RESOLVED_APP_PATH="$app_path"
+        TMUX_RESOLVED_BUNDLE_ID="$resolved_bundle_id"
+        log_debug "tmux client host resolver resolved app_path=$TMUX_RESOLVED_APP_PATH bundle_id=$resolved_bundle_id source_pid=$current_pid depth=$depth"
+        return 0
+      fi
+      log_debug "tmux client host resolver failure reason=plist-read-miss app_path=$app_path source_pid=$current_pid"
+      return 1
+    fi
+
+    case "$parent_pid" in
+      ''|*[!0-9]*)
+        break
+        ;;
+    esac
+    if [ "$parent_pid" -le 1 ] || [ "$parent_pid" -eq "$current_pid" ]; then
+      break
+    fi
+    current_pid="$parent_pid"
+    depth=$((depth + 1))
+  done
+
+  log_debug "tmux client host resolver failure reason=ancestry-scan-miss start_pid=$resolver_client_pid client_name=${resolver_client_name:-<empty>} client_tty=${resolver_client_tty:-<empty>} socket=${resolver_socket:-<empty>}"
+  return 1
 }
 
 # Read message from $1 (manual) or stdin JSON (Claude Code hook)
@@ -226,10 +304,201 @@ else
 fi
 log_debug "notify.sh start tmux=${TMUX:-<empty>} pane=${TMUX_PANE:-<empty>} term_program=${TERM_PROGRAM:-<empty>} sender_mode=$SENDER_MODE"
 
-notify_run() {
+if [ -n "$TMUX" ]; then
+  # Get tmux context in a single subprocess, then parse into fixed fields.
+  SOCKET=${TMUX%%,*}
+  TARGET_PANE="$TMUX_PANE"
+  if [ -z "$TARGET_PANE" ]; then
+    if [ "$TMUX_CMD_TIMEOUT_MS" -le 0 ]; then
+      TARGET_PANE="$("$TMUX_BIN" display-message -p '#{pane_id}' 2>/dev/null)"
+      target_pane_rc=$?
+    else
+      TARGET_PANE="$(run_with_timeout_ms "$TMUX_CMD_TIMEOUT_MS" "$TMUX_BIN" display-message -p '#{pane_id}' 2>/dev/null)"
+      target_pane_rc=$?
+    fi
+    if [ "$target_pane_rc" -eq 124 ]; then
+      log_debug "tmux pane lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms"
+      TARGET_PANE=""
+    elif [ "$target_pane_rc" -ne 0 ]; then
+      log_debug "tmux pane lookup failed rc=$target_pane_rc"
+      TARGET_PANE=""
+    fi
+  fi
+
+  TMUX_FORMAT="$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT"
+  if [ -n "$TARGET_PANE" ]; then
+    if [ "$TMUX_CMD_TIMEOUT_MS" -le 0 ]; then
+      TMUX_INFO="$("$TMUX_BIN" display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT" 2>/dev/null)"
+      tmux_info_rc=$?
+    else
+      TMUX_INFO="$(run_with_timeout_ms "$TMUX_CMD_TIMEOUT_MS" "$TMUX_BIN" display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT" 2>/dev/null)"
+      tmux_info_rc=$?
+    fi
+  else
+    if [ "$TMUX_CMD_TIMEOUT_MS" -le 0 ]; then
+      TMUX_INFO="$("$TMUX_BIN" display-message -p "$TMUX_FORMAT" 2>/dev/null)"
+      tmux_info_rc=$?
+    else
+      TMUX_INFO="$(run_with_timeout_ms "$TMUX_CMD_TIMEOUT_MS" "$TMUX_BIN" display-message -p "$TMUX_FORMAT" 2>/dev/null)"
+      tmux_info_rc=$?
+    fi
+  fi
+  if [ "$tmux_info_rc" -eq 124 ]; then
+    log_debug "tmux metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms"
+    TMUX_INFO=""
+  elif [ "$tmux_info_rc" -ne 0 ]; then
+    log_debug "tmux metadata lookup failed rc=$tmux_info_rc"
+    TMUX_INFO=""
+  fi
+
+  if [ -n "$TMUX_INFO" ]; then
+    case "$TMUX_INFO" in
+      *"|"*"|"*"|"*"|"*"|"*)
+        SESSION=""
+        WINDOW_INDEX=""
+        WINDOW_NAME=""
+        PANE_INDEX=""
+        PANE_ID=""
+        CLIENT_NAME=""
+        CLIENT_TTY=""
+        CLIENT_PID=""
+        IFS='|' read -r SESSION WINDOW_INDEX WINDOW_NAME PANE_INDEX PANE_ID CLIENT_NAME CLIENT_TTY CLIENT_PID <<EOF
+$TMUX_INFO
+EOF
+
+        if [ -z "$CLIENT_PID" ]; then
+          if [ "$TMUX_CMD_TIMEOUT_MS" -le 0 ]; then
+            CLIENT_INFO="$("$TMUX_BIN" display-message -p '#{client_name}|#{client_tty}|#{client_pid}' 2>/dev/null)"
+            client_info_rc=$?
+          else
+            CLIENT_INFO="$(run_with_timeout_ms "$TMUX_CMD_TIMEOUT_MS" "$TMUX_BIN" display-message -p '#{client_name}|#{client_tty}|#{client_pid}' 2>/dev/null)"
+            client_info_rc=$?
+          fi
+          if [ "$client_info_rc" -eq 124 ]; then
+            log_debug "tmux client metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms"
+            CLIENT_INFO=""
+          elif [ "$client_info_rc" -ne 0 ]; then
+            log_debug "tmux client metadata lookup failed rc=$client_info_rc"
+            CLIENT_INFO=""
+          fi
+          case "$CLIENT_INFO" in
+            *"|"*)
+              IFS='|' read -r CLIENT_NAME CLIENT_TTY CLIENT_PID <<EOF
+$CLIENT_INFO
+EOF
+              ;;
+          esac
+        fi
+
+        if [ -n "$PANE_ID" ]; then
+          PANE_TARGET_ID="$PANE_ID"
+        else
+          PANE_TARGET_ID="$TARGET_PANE"
+        fi
+
+        ACTIVATE_SOURCE=""
+        TMUX_RESOLVED_APP_PATH=""
+        if [ -n "$ACTIVATE_BUNDLE_ID" ]; then
+          ACTIVATE_SOURCE="explicit"
+        else
+          if resolve_tmux_client_host_bundle_id "$CLIENT_PID" "$CLIENT_TTY" "$CLIENT_NAME" "$SOCKET"; then
+            ACTIVATE_BUNDLE_ID="$TMUX_RESOLVED_BUNDLE_ID"
+            ACTIVATE_SOURCE="tmux-client-pid"
+          else
+            case "$TMUX_ACTIVATE_FALLBACK" in
+              frontmost)
+                ACTIVATE_BUNDLE_ID="$(infer_frontmost_activate_bundle_id)"
+                ACTIVATE_SOURCE="fallback-frontmost"
+                ;;
+              *)
+                ACTIVATE_BUNDLE_ID=""
+                ACTIVATE_SOURCE="fallback-none"
+                ;;
+            esac
+          fi
+        fi
+        log_debug "tmux activation source=${ACTIVATE_SOURCE:-<empty>} client_pid=${CLIENT_PID:-<empty>} resolved app path=${TMUX_RESOLVED_APP_PATH:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>} fallback_policy=$TMUX_ACTIVATE_FALLBACK"
+
+        set -- -title "Claude Code"
+        if [ -n "$SESSION" ] && [ -n "$WINDOW_INDEX" ] && [ -n "$WINDOW_NAME" ]; then
+          set -- "$@" -subtitle "$SESSION:$WINDOW_INDEX.$WINDOW_NAME"
+        fi
+        set -- "$@" \
+          -message "$MESSAGE" \
+          -sound default \
+          -group "claude-code"
+        if [ -n "$PANE_TARGET_ID" ] && [ -n "$SOCKET" ] && [ -x "$TMUX_REDIRECT_SCRIPT" ]; then
+          if [ -n "$SESSION" ] && [ -n "$WINDOW_INDEX" ] && [ -n "$PANE_INDEX" ]; then
+            PANE_TARGET_INDEX="$SESSION:$WINDOW_INDEX.$PANE_INDEX"
+          else
+            PANE_TARGET_INDEX="$PANE_TARGET_ID"
+          fi
+
+          EXECUTE_CMD="$(shell_quote "$TMUX_REDIRECT_SCRIPT") $(shell_quote "$TMUX_BIN") $(shell_quote "$SOCKET") $(shell_quote "$PANE_TARGET_ID") $(shell_quote "$PANE_TARGET_INDEX") $(shell_quote "$CLIENT_NAME") $(shell_quote "$CLIENT_TTY") $(shell_quote "${ACTIVATE_BUNDLE_ID:-}") $(shell_quote "${TMUX_REDIRECT_LOG:-}") $(shell_quote "${ACTIVATE_SOURCE:-}")"
+          log_debug "execute payload prepared socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>} client_pid=${CLIENT_PID:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>} activation_source=${ACTIVATE_SOURCE:-<empty>}"
+          set -- "$@" -execute "$EXECUTE_CMD"
+        else
+          printf '%s\n' "Warning: tmux redirect helper unavailable or tmux context incomplete; sending notification without execute action" >&2
+          log_debug "tmux execute omitted: helper unavailable or incomplete context socket=${SOCKET:-<empty>} pane=${PANE_TARGET_ID:-<empty>}"
+        fi
+        set -- "$@" \
+          -timeout "$NOTIFY_TIMEOUT" \
+          -sender-mode "$SENDER_MODE" \
+          -sender-bundle-id "$SENDER_BUNDLE_ID"
+        if [ -n "$SENDER_APP_PATH" ]; then
+          set -- "$@" -sender-app-path "$SENDER_APP_PATH"
+        fi
+        CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
+          CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
+        ;;
+      *)
+        printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
+        log_debug "tmux execute omitted: unable to parse tmux info"
+        set -- \
+          -title "Claude Code" \
+          -message "$MESSAGE" \
+          -sound default \
+          -group "claude-code" \
+          -timeout "$NOTIFY_TIMEOUT" \
+          -sender-mode "$SENDER_MODE" \
+          -sender-bundle-id "$SENDER_BUNDLE_ID"
+        if [ -n "$SENDER_APP_PATH" ]; then
+          set -- "$@" -sender-app-path "$SENDER_APP_PATH"
+        fi
+        CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
+          CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
+        ;;
+    esac
+  else
+    printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
+    log_debug "tmux execute omitted: tmux info empty"
+    set -- \
+      -title "Claude Code" \
+      -message "$MESSAGE" \
+      -sound default \
+      -group "claude-code" \
+      -timeout "$NOTIFY_TIMEOUT" \
+      -sender-mode "$SENDER_MODE" \
+      -sender-bundle-id "$SENDER_BUNDLE_ID"
+    if [ -n "$SENDER_APP_PATH" ]; then
+      set -- "$@" -sender-app-path "$SENDER_APP_PATH"
+    fi
+    CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
+      CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
+  fi
+else
+  if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
+    ACTIVATE_BUNDLE_ID="$(infer_frontmost_activate_bundle_id)"
+    log_debug "inferred activate bundle id outside tmux: ${ACTIVATE_BUNDLE_ID:-<empty>}"
+  fi
   ACTIVATE_OVERRIDE="${NOTIFY_ACTIVATE_OVERRIDE-$ACTIVATE_BUNDLE_ID}"
   log_debug "notify_run activate_override=${ACTIVATE_OVERRIDE:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>}"
-  set -- "$@" \
+  log_debug "running outside tmux; execute action omitted"
+  set -- \
+    -title "Claude Code" \
+    -message "$MESSAGE" \
+    -sound default \
+    -group "claude-code" \
     -timeout "$NOTIFY_TIMEOUT" \
     -sender-mode "$SENDER_MODE" \
     -sender-bundle-id "$SENDER_BUNDLE_ID"
@@ -240,135 +509,5 @@ notify_run() {
     set -- "$@" -sender-app-path "$SENDER_APP_PATH"
   fi
   CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-    CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@"
-}
-
-tmux_notify() {
-  subtitle="$1"
-  execute_cmd="$2"
-
-  set -- -title "Claude Code"
-  if [ -n "$subtitle" ]; then
-    set -- "$@" -subtitle "$subtitle"
-  fi
-  set -- "$@" \
-    -message "$MESSAGE" \
-    -sound default \
-    -group "claude-code"
-  if [ -n "$execute_cmd" ]; then
-    set -- "$@" -execute "$execute_cmd"
-  fi
-
-  NOTIFY_ACTIVATE_OVERRIDE="" notify_run "$@" &
-}
-
-if [ -n "$TMUX" ]; then
-  # Get tmux context in a single subprocess, then parse with parameter expansion.
-  SOCKET=${TMUX%%,*}
-  TARGET_PANE="$TMUX_PANE"
-  if [ -z "$TARGET_PANE" ]; then
-    TARGET_PANE="$(run_tmux_query_with_logging \
-      "tmux pane lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms" \
-      "tmux pane lookup failed" \
-      display-message -p '#{pane_id}')"
-    target_pane_rc=$?
-    if [ "$target_pane_rc" -ne 0 ]; then
-      TARGET_PANE=""
-    fi
-  fi
-
-  TMUX_FORMAT="$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT"
-  if [ -n "$TARGET_PANE" ]; then
-    TMUX_INFO="$(run_tmux_query_with_logging \
-      "tmux metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms" \
-      "tmux metadata lookup failed" \
-      display-message -t "$TARGET_PANE" -p "$TMUX_FORMAT")"
-    tmux_info_rc=$?
-  else
-    TMUX_INFO="$(run_tmux_query_with_logging \
-      "tmux metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms" \
-      "tmux metadata lookup failed" \
-      display-message -p "$TMUX_FORMAT")"
-    tmux_info_rc=$?
-  fi
-  if [ "$tmux_info_rc" -ne 0 ]; then
-    TMUX_INFO=""
-  fi
-
-  if [ -n "$TMUX_INFO" ]; then
-    case "$TMUX_INFO" in
-      *"|"*"|"*"|"*"|"*"|"*)
-        SESSION=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
-        WINDOW_INDEX=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
-        WINDOW_NAME=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
-        PANE_INDEX=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
-        PANE_ID=${TMUX_INFO%%|*}; TMUX_INFO=${TMUX_INFO#*|}
-        CLIENT_NAME=${TMUX_INFO%%|*}
-        CLIENT_TTY=${TMUX_INFO#*|}
-
-        if [ -z "$CLIENT_NAME" ] && [ -z "$CLIENT_TTY" ]; then
-          CLIENT_INFO="$(run_tmux_query_with_logging \
-            "tmux client metadata lookup timed out after ${TMUX_CMD_TIMEOUT_MS}ms" \
-            "tmux client metadata lookup failed" \
-            display-message -p '#{client_name}|#{client_tty}')"
-          client_info_rc=$?
-          if [ "$client_info_rc" -ne 0 ]; then
-            CLIENT_INFO=""
-          fi
-          case "$CLIENT_INFO" in
-            *"|"*)
-              CLIENT_NAME=${CLIENT_INFO%%|*}
-              CLIENT_TTY=${CLIENT_INFO#*|}
-              ;;
-          esac
-        fi
-
-        if [ -n "$PANE_ID" ]; then
-          PANE_TARGET_ID="$PANE_ID"
-        else
-          PANE_TARGET_ID="$TARGET_PANE"
-        fi
-        if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
-          ACTIVATE_BUNDLE_ID="$(infer_frontmost_activate_bundle_id)"
-          log_debug "inferred activate bundle id in tmux mode: ${ACTIVATE_BUNDLE_ID:-<empty>}"
-        fi
-        if [ -n "$PANE_TARGET_ID" ] && [ -n "$SOCKET" ] && [ -x "$TMUX_REDIRECT_SCRIPT" ]; then
-          if [ -n "$SESSION" ] && [ -n "$WINDOW_INDEX" ] && [ -n "$PANE_INDEX" ]; then
-            PANE_TARGET_INDEX="$SESSION:$WINDOW_INDEX.$PANE_INDEX"
-          else
-            PANE_TARGET_INDEX="$PANE_TARGET_ID"
-          fi
-
-          EXECUTE_CMD="$(shell_quote "$TMUX_REDIRECT_SCRIPT") $(shell_quote "$TMUX_BIN") $(shell_quote "$SOCKET") $(shell_quote "$PANE_TARGET_ID") $(shell_quote "$PANE_TARGET_INDEX") $(shell_quote "$CLIENT_NAME") $(shell_quote "$CLIENT_TTY") $(shell_quote "${ACTIVATE_BUNDLE_ID:-}") $(shell_quote "${TMUX_REDIRECT_LOG:-}")"
-          log_debug "execute payload prepared socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>}"
-
-          tmux_notify "$SESSION:$WINDOW_INDEX.$WINDOW_NAME" "$EXECUTE_CMD"
-        else
-          printf '%s\n' "Warning: tmux redirect helper unavailable or tmux context incomplete; sending notification without execute action" >&2
-          log_debug "tmux execute omitted: helper unavailable or incomplete context socket=${SOCKET:-<empty>} pane=${PANE_TARGET_ID:-<empty>}"
-          tmux_notify "" ""
-        fi
-        ;;
-      *)
-        printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
-        log_debug "tmux execute omitted: unable to parse tmux info"
-        tmux_notify "" ""
-        ;;
-    esac
-  else
-    printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
-    log_debug "tmux execute omitted: tmux info empty"
-    tmux_notify "" ""
-  fi
-else
-  if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
-    ACTIVATE_BUNDLE_ID="$(infer_frontmost_activate_bundle_id)"
-    log_debug "inferred activate bundle id outside tmux: ${ACTIVATE_BUNDLE_ID:-<empty>}"
-  fi
-  log_debug "running outside tmux; execute action omitted"
-  notify_run \
-    -title "Claude Code" \
-    -message "$MESSAGE" \
-    -sound default \
-    -group "claude-code" &
+    CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
 fi

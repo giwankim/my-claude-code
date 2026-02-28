@@ -284,14 +284,46 @@ else
   fail "E012" "notify.sh outside-tmux debug log missing inferred native activate path"
 fi
 
-case_start "E013" "notify.sh tmux mode logs execute payload inference path"
+case_start "E013" "notify.sh tmux mode logs client-pid activation source for execute payload"
 TMP_DIR=$(make_case_tmp_dir "E013")
 FAKE_OSASCRIPT="$TMP_DIR/fake-osascript.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_PS="$TMP_DIR/fake-ps.sh"
+FAKE_GHOSTTY_APP="$TMP_DIR/Ghostty.app"
+FAKE_GHOSTTY_CLIENT_PID="422013"
 DEBUG_LOG="$TMP_DIR/notify-debug.log"
 write_fake_osascript_success "$FAKE_OSASCRIPT"
+write_fake_app_bundle_runner "$FAKE_GHOSTTY_APP" "com.mitchellh.ghostty" "ghostty" >/dev/null
+cat > "$FAKE_PS" <<FAKE_PS_E013
+#!/bin/sh
+pid=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -p)
+      pid="\$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+case "\$pid" in
+  422013)
+    printf '%s\n' "422012 /usr/bin/tmux -L e2e"
+    ;;
+  422012)
+    printf '%s\n' "422011 $FAKE_GHOSTTY_APP/Contents/MacOS/ghostty --single-instance"
+    ;;
+  422011)
+    printf '%s\n' "1 /sbin/launchd"
+    ;;
+esac
+exit 0
+FAKE_PS_E013
+chmod +x "$FAKE_PS"
 TMUX_DISPLAY_MESSAGE_FORMAT=$(notify_tmux_display_message_format "$SCRIPT")
-TMUX_DISPLAY_PAYLOAD=$(build_tmux_display_message_payload "sess" "6" "win" "3" "%61" "client-e2e" "/dev/ttys061")
+TMUX_DISPLAY_PAYLOAD=$(build_tmux_display_message_payload "sess" "6" "win" "3" "%61" "client-e2e" "/dev/ttys061" "$FAKE_GHOSTTY_CLIENT_PID")
 if [ "$TMUX_DISPLAY_MESSAGE_FORMAT" != "$NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT" ]; then
   fail "E013" "notify.sh tmux display-message format drifted from expected parser contract"
 fi
@@ -307,21 +339,22 @@ exit 0
 FAKE_TMUX_E013
 chmod +x "$FAKE_TMUX"
 TMUX="/tmp/fake-socket,661,0" TMUX_PANE="%61" NOTIFY_DEBUG_LOG="$DEBUG_LOG" NOTIFY_ACTIVATE_BUNDLE_ID="" \
-  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_OSASCRIPT" NOTIFY_TMUX_BIN="$FAKE_TMUX" CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 NOTIFY_TIMEOUT=1 \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_OSASCRIPT" NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_PS_BIN="$FAKE_PS" \
+  CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 NOTIFY_TIMEOUT=1 \
   "$SCRIPT" "e2e tmux inference test" 2>/dev/null
 rc=$?
 drain_pid_file_if_present "$PID_FILE" 30 "$EXPECTED_NOTIFY_NAME"
 if [ "$rc" -eq 0 ]; then
-  pass "E013" "notify.sh tmux inference probe exits 0"
+  pass "E013" "notify.sh tmux client-pid inference probe exits 0"
 else
-  fail "E013" "notify.sh tmux inference probe exited $rc"
+  fail "E013" "notify.sh tmux client-pid inference probe exited $rc"
 fi
-if grep -q "inferred activate bundle id in tmux mode: com.jetbrains.intellij" "$DEBUG_LOG" \
-  && grep -q "notify_run activate_override=<empty> activate_bundle=com.jetbrains.intellij" "$DEBUG_LOG" \
-  && grep -q "execute payload prepared .*activate_bundle=com.jetbrains.intellij" "$DEBUG_LOG"; then
-  pass "E013" "notify.sh tmux debug log records execute payload inference path"
+if grep -q "activation source=tmux-client-pid" "$DEBUG_LOG" \
+  && grep -q "resolved app path=.*Ghostty.app" "$DEBUG_LOG" \
+  && grep -q "activate_bundle=com.mitchellh.ghostty" "$DEBUG_LOG"; then
+  pass "E013" "notify.sh tmux debug log records client-pid activation source path"
 else
-  fail "E013" "notify.sh tmux debug log missing execute payload inference path"
+  fail "E013" "notify.sh tmux debug log missing client-pid activation source path"
 fi
 
 finish
