@@ -125,7 +125,11 @@ assert_file_not_contains() {
   pattern="$3"
   pass_message="$4"
   fail_message="$5"
-  if grep -q -- "$pattern" "$file" 2>/dev/null; then
+  if [ ! -f "$file" ]; then
+    pass "$case_id" "$pass_message"
+    return
+  fi
+  if grep -q -- "$pattern" "$file"; then
     fail "$case_id" "$fail_message"
   else
     pass "$case_id" "$pass_message"
