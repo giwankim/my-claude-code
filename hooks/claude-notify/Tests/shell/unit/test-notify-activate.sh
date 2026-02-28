@@ -645,4 +645,116 @@ assert_file_not_contains "U037" "$ACTIVATE_OSASCRIPT_ARGS_LOG" "id of app (path 
   "notify.sh tmux IntelliJ ancestry path skips frontmost-app probe" \
   "notify.sh tmux IntelliJ ancestry path unexpectedly invoked frontmost-app probe"
 
+case_start "U038" "notify.sh tmux mode resolves quoted IntelliJ app path from wrapped client pid ancestry"
+TMP_DIR=$(make_case_tmp_dir "U038")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_REDIRECT="$TMP_DIR/fake-tmux-redirect.sh"
+FAKE_PS="$TMP_DIR/fake-ps.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+FAKE_IDEA_APP="$TMP_DIR/IntelliJ IDEA.app"
+FAKE_IDEA_CLIENT_PID="420038"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+REDIRECT_ARGS_LOG="$TMP_DIR/redirect-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+write_fake_app_bundle_runner "$FAKE_IDEA_APP" "com.jetbrains.intellij" "idea" >/dev/null
+cat > "$FAKE_PS" <<FAKE_PS_U038
+#!/bin/sh
+pid=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -p)
+      pid="\$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+case "\$pid" in
+  420038)
+    printf '%s\n' "420137 /usr/bin/tmux -L unit"
+    ;;
+  420137)
+    printf '%s\n' "420136 /bin/sh -lc '$FAKE_IDEA_APP/Contents/MacOS/idea --nosplash'"
+    ;;
+  420136)
+    printf '%s\n' "1 /sbin/launchd"
+    ;;
+esac
+exit 0
+FAKE_PS_U038
+chmod +x "$FAKE_PS"
+cat > "$FAKE_TMUX" <<FAKE_TMUX_U038
+#!/bin/sh
+if [ "\$1" = "display-message" ]; then
+  printf '%s\n' "sess|8|win|3|%38|client-38|/dev/ttys038|$FAKE_IDEA_CLIENT_PID"
+  exit 0
+fi
+exit 0
+FAKE_TMUX_U038
+cat > "$FAKE_REDIRECT" <<'FAKE_REDIRECT_U038'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$REDIRECT_ARGS_LOG"
+  i=$((i + 1))
+done
+exit 0
+FAKE_REDIRECT_U038
+chmod +x "$FAKE_TMUX" "$FAKE_REDIRECT"
+TMUX="/tmp/fake-socket,838,0" TMUX_PANE="%38" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_REDIRECT_SCRIPT="$FAKE_REDIRECT" \
+  NOTIFY_PS_BIN="$FAKE_PS" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  "$SCRIPT" "tmux wrapped intellij pid ancestry test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+assert_rc_eq "U038" "$rc" 0 \
+  "notify.sh tmux wrapped IntelliJ ancestry probe exits 0" \
+  "notify.sh tmux wrapped IntelliJ ancestry probe exited $rc"
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD" >/dev/null 2>&1
+fi
+assert_file_contains "U038" "$REDIRECT_ARGS_LOG" '^\[6\]=com.jetbrains.intellij$' \
+  "notify.sh tmux resolves quoted IntelliJ bundle id from wrapped client pid ancestry" \
+  "notify.sh tmux did not resolve quoted IntelliJ bundle id from wrapped client pid ancestry"
+assert_file_not_contains "U038" "$ACTIVATE_OSASCRIPT_ARGS_LOG" "id of app (path to frontmost application as text)" \
+  "notify.sh tmux wrapped IntelliJ ancestry path skips frontmost-app probe" \
+  "notify.sh tmux wrapped IntelliJ ancestry path unexpectedly invoked frontmost-app probe"
+
+case_start "U039" "notify.sh resolve_bundle_id_from_app_path returns non-zero when CFBundleIdentifier is missing"
+TMP_DIR=$(make_case_tmp_dir "U039")
+FAKE_FUNC_SCRIPT="$TMP_DIR/notify-resolver-func.sh"
+FAKE_APP="$TMP_DIR/Missing Bundle ID.app"
+mkdir -p "$FAKE_APP/Contents"
+cat > "$FAKE_APP/Contents/Info.plist" <<'U039_INFO_PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Missing Bundle ID</string>
+</dict>
+</plist>
+U039_INFO_PLIST
+awk '
+  /^resolve_bundle_id_from_app_path\(\)/ {capture=1}
+  capture {print}
+  capture && /^}$/ {exit}
+' "$SCRIPT" > "$FAKE_FUNC_SCRIPT"
+# shellcheck source=/dev/null
+. "$FAKE_FUNC_SCRIPT"
+resolve_bundle_id_from_app_path "$FAKE_APP" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  pass "U039" "notify.sh resolver returns non-zero when CFBundleIdentifier is missing"
+else
+  fail "U039" "notify.sh resolver returned zero when CFBundleIdentifier is missing"
+fi
+
 finish
