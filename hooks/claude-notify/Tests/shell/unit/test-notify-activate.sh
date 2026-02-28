@@ -503,9 +503,10 @@ wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 assert_rc_eq "U035" "$rc" 0 \
   "notify.sh tmux fallback-none probe exits 0" \
   "notify.sh tmux fallback-none probe exited $rc"
-EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
-if [ -n "$EXECUTE_PAYLOAD" ]; then
+if EXECUTE_PAYLOAD=$(wait_for_execute_payload "$ARGS_LOG" 20); then
   REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD" >/dev/null 2>&1
+else
+  fail "U035" "notify.sh tmux fallback-none probe did not emit execute payload"
 fi
 assert_file_contains "U035" "$REDIRECT_ARGS_LOG" '^\[6\]=$' \
   "notify.sh tmux fallback-none keeps activate bundle argument empty" \
@@ -552,9 +553,10 @@ wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 assert_rc_eq "U036" "$rc" 0 \
   "notify.sh tmux fallback-frontmost probe exits 0" \
   "notify.sh tmux fallback-frontmost probe exited $rc"
-EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
-if [ -n "$EXECUTE_PAYLOAD" ]; then
+if EXECUTE_PAYLOAD=$(wait_for_execute_payload "$ARGS_LOG" 20); then
   REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD" >/dev/null 2>&1
+else
+  fail "U036" "notify.sh tmux fallback-frontmost probe did not emit execute payload"
 fi
 assert_file_contains "U036" "$REDIRECT_ARGS_LOG" '^\[6\]=com.jetbrains.intellij$' \
   "notify.sh tmux fallback-frontmost preserves legacy inferred activate bundle" \
@@ -634,9 +636,10 @@ wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 assert_rc_eq "U037" "$rc" 0 \
   "notify.sh tmux IntelliJ ancestry probe exits 0" \
   "notify.sh tmux IntelliJ ancestry probe exited $rc"
-EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
-if [ -n "$EXECUTE_PAYLOAD" ]; then
+if EXECUTE_PAYLOAD=$(wait_for_execute_payload "$ARGS_LOG" 20); then
   REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD" >/dev/null 2>&1
+else
+  fail "U037" "notify.sh tmux IntelliJ ancestry probe did not emit execute payload"
 fi
 assert_file_contains "U037" "$REDIRECT_ARGS_LOG" '^\[6\]=com.jetbrains.intellij$' \
   "notify.sh tmux resolves IntelliJ bundle id from client pid ancestry" \
@@ -716,9 +719,10 @@ wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 assert_rc_eq "U038" "$rc" 0 \
   "notify.sh tmux wrapped IntelliJ ancestry probe exits 0" \
   "notify.sh tmux wrapped IntelliJ ancestry probe exited $rc"
-EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
-if [ -n "$EXECUTE_PAYLOAD" ]; then
+if EXECUTE_PAYLOAD=$(wait_for_execute_payload "$ARGS_LOG" 20); then
   REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD" >/dev/null 2>&1
+else
+  fail "U038" "notify.sh tmux wrapped IntelliJ ancestry probe did not emit execute payload"
 fi
 assert_file_contains "U038" "$REDIRECT_ARGS_LOG" '^\[6\]=com.jetbrains.intellij$' \
   "notify.sh tmux resolves quoted IntelliJ bundle id from wrapped client pid ancestry" \
