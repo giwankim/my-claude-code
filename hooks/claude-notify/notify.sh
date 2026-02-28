@@ -193,25 +193,52 @@ resolve_bundle_id_from_app_path() {
   app_path="$1"
   plist_path="$app_path/Contents/Info.plist"
   [ -r "$plist_path" ] || return 1
-  /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist_path" 2>/dev/null | tr -d '\r'
+  bundle_id_raw=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist_path" 2>/dev/null)
+  plist_rc=$?
+  [ "$plist_rc" -eq 0 ] || return "$plist_rc"
+  printf '%s' "$bundle_id_raw" | tr -d '\r'
 }
 
 extract_app_exec_from_args() {
   proc_args="$1"
   case "$proc_args" in
     *".app/Contents/MacOS/"*)
-      raw_prefix="${proc_args%%.app/Contents/MacOS/*}"
-      trimmed_prefix="$raw_prefix"
-      case "$raw_prefix" in
-        *" /"*)
-          trimmed_prefix="/${raw_prefix##* /}"
-          ;;
-      esac
-      app_path="${trimmed_prefix}.app"
-      exec_tail="${proc_args#*.app/Contents/MacOS/}"
+      app_prefix_raw="${proc_args%".app/Contents/MacOS/"*}"
+      exec_tail="${proc_args##*.app/Contents/MacOS/}"
       exec_name="${exec_tail%% *}"
-      if [ -n "$app_path" ] && [ -n "$exec_name" ]; then
-        printf '%s\n' "$app_path/Contents/MacOS/$exec_name"
+      exec_name="${exec_name#\"}"
+      exec_name="${exec_name#\'}"
+      exec_name="${exec_name%\"}"
+      exec_name="${exec_name%\'}"
+      [ -n "$exec_name" ] || return 0
+
+      fallback_prefix="$(printf '%s' "$app_prefix_raw" | sed "s/^[\"']//; s/[\"']$//; s/\\\\ / /g")"
+      fallback_exec="${fallback_prefix}.app/Contents/MacOS/$exec_name"
+
+      while IFS= read -r app_prefix_candidate; do
+        [ -n "$app_prefix_candidate" ] || continue
+        candidate_prefix="$(printf '%s' "$app_prefix_candidate" | sed "s/^[\"']//; s/[\"']$//; s/\\\\ / /g")"
+        candidate_app_path="${candidate_prefix}.app"
+        candidate_exec="$candidate_app_path/Contents/MacOS/$exec_name"
+        if [ -r "$candidate_app_path/Contents/Info.plist" ]; then
+          printf '%s\n' "$candidate_exec"
+          return 0
+        fi
+      done <<EOF
+$(printf '%s\n' "$app_prefix_raw" | awk '
+{
+  input = $0
+  length_input = length(input)
+  for (i = 1; i <= length_input; i++) {
+    if (substr(input, i, 1) == "/") {
+      print substr(input, i)
+    }
+  }
+}')
+EOF
+
+      if [ -n "$fallback_exec" ]; then
+        printf '%s\n' "$fallback_exec"
       fi
       ;;
   esac
@@ -251,13 +278,14 @@ resolve_tmux_client_host_bundle_id() {
     if [ -n "$app_exec" ]; then
       app_path="${app_exec%/Contents/MacOS/*}"
       resolved_bundle_id="$(resolve_bundle_id_from_app_path "$app_path")"
-      if [ -n "$resolved_bundle_id" ]; then
+      resolve_bundle_rc=$?
+      if [ "$resolve_bundle_rc" -eq 0 ] && [ -n "$resolved_bundle_id" ]; then
         TMUX_RESOLVED_APP_PATH="$app_path"
         TMUX_RESOLVED_BUNDLE_ID="$resolved_bundle_id"
         log_debug "tmux client host resolver resolved app_path=$TMUX_RESOLVED_APP_PATH bundle_id=$resolved_bundle_id source_pid=$current_pid depth=$depth"
         return 0
       fi
-      log_debug "tmux client host resolver failure reason=plist-read-miss app_path=$app_path source_pid=$current_pid"
+      log_debug "tmux client host resolver failure reason=plist-read-miss app_path=$app_path source_pid=$current_pid plist_rc=$resolve_bundle_rc"
       return 1
     fi
 

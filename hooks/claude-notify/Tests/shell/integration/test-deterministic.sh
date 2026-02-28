@@ -1098,4 +1098,99 @@ else
   fail "I133" "tmux fallback-frontmost did not invoke frontmost activate probe"
 fi
 
+case_start "I134" "notify.sh tmux wrapped quoted IntelliJ client ancestry resolves host app without frontmost fallback"
+TMP_DIR=$(make_case_tmp_dir "I134")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_REDIRECT="$TMP_DIR/fake-tmux-redirect.sh"
+FAKE_PS="$TMP_DIR/fake-ps.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+FAKE_IDEA_APP="$TMP_DIR/IntelliJ IDEA.app"
+FAKE_IDEA_CLIENT_PID="420134"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+REDIRECT_ARGS_LOG="$TMP_DIR/redirect-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+write_fake_app_bundle_runner "$FAKE_IDEA_APP" "com.jetbrains.intellij" "idea" >/dev/null
+cat > "$FAKE_PS" <<CASE_I134_PS
+#!/bin/sh
+pid=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -p)
+      pid="\$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+case "\$pid" in
+  420134)
+    printf '%s\n' "420233 /usr/bin/tmux -L integ"
+    ;;
+  420233)
+    printf '%s\n' "420232 /bin/sh -lc '$FAKE_IDEA_APP/Contents/MacOS/idea --nosplash'"
+    ;;
+  420232)
+    printf '%s\n' "1 /sbin/launchd"
+    ;;
+esac
+exit 0
+CASE_I134_PS
+cat > "$FAKE_TMUX" <<CASE_I134_TMUX
+#!/bin/sh
+if [ "\$1" = "display-message" ]; then
+  printf '%s\n' "sess|4|win|9|%134|client-134|/dev/ttys134|$FAKE_IDEA_CLIENT_PID"
+  exit 0
+fi
+exit 0
+CASE_I134_TMUX
+cat > "$FAKE_REDIRECT" <<'CASE_I134_REDIRECT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$REDIRECT_ARGS_LOG"
+  i=$((i + 1))
+done
+exit 0
+CASE_I134_REDIRECT
+chmod +x "$FAKE_PS" "$FAKE_TMUX" "$FAKE_REDIRECT"
+TMUX="/tmp/fake-socket,134,0" TMUX_PANE="%134" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_REDIRECT_SCRIPT="$FAKE_REDIRECT" REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" \
+  NOTIFY_PS_BIN="$FAKE_PS" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  "$SCRIPT" "tmux wrapped quoted intellij ancestry integration test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I134" "notify.sh tmux wrapped quoted IntelliJ ancestry probe exits 0"
+else
+  fail "I134" "notify.sh tmux wrapped quoted IntelliJ ancestry probe exited $rc"
+fi
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
+  rc=$?
+else
+  rc=1
+fi
+if [ "$rc" -eq 0 ]; then
+  pass "I134" "tmux wrapped quoted IntelliJ execute payload runs successfully"
+else
+  fail "I134" "tmux wrapped quoted IntelliJ execute payload failed (rc=$rc)"
+fi
+if grep -q '^\[6\]=com.jetbrains.intellij$' "$REDIRECT_ARGS_LOG"; then
+  pass "I134" "tmux wrapped quoted IntelliJ execute payload carries resolved IntelliJ bundle argument"
+else
+  fail "I134" "tmux wrapped quoted IntelliJ execute payload missing resolved IntelliJ bundle argument"
+fi
+if grep -q "id of app (path to frontmost application as text)" "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  fail "I134" "tmux wrapped quoted IntelliJ path unexpectedly invoked frontmost activate probe"
+else
+  pass "I134" "tmux wrapped quoted IntelliJ path avoids frontmost activate probe"
+fi
+
 finish
