@@ -143,6 +143,24 @@ extract_execute_payload() {
   ' "$args_log"
 }
 
+wait_for_execute_payload() {
+  args_log="$1"
+  max_tries="${2:-30}"
+  i=0
+  while [ "$i" -lt "$max_tries" ]; do
+    if [ -f "$args_log" ]; then
+      execute_payload=$(extract_execute_payload "$args_log")
+      if [ -n "$execute_payload" ]; then
+        printf '%s\n' "$execute_payload"
+        return 0
+      fi
+    fi
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+
 kill_pid_from_file() {
   pid_file="$1"
   expected_name="${2:-}"
