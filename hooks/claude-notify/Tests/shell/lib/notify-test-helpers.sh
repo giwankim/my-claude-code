@@ -3,7 +3,7 @@
 # This file assumes testlib.sh is sourced first for wait_for_pid_file and
 # wait_for_pid_removed used by drain_pid_file_if_present.
 
-NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}'
+NOTIFY_TMUX_DISPLAY_MESSAGE_FORMAT='#{session_name}|#{window_index}|#{window_name}|#{pane_index}|#{pane_id}|#{client_name}|#{client_tty}|#{client_pid}'
 
 register_tmp_dir() {
   dir="$1"
@@ -125,8 +125,9 @@ build_tmux_display_message_payload() {
   pane_id="$5"
   client_name="$6"
   client_tty="$7"
-  printf '%s|%s|%s|%s|%s|%s|%s\n' \
-    "$session_name" "$window_index" "$window_name" "$pane_index" "$pane_id" "$client_name" "$client_tty"
+  client_pid="$8"
+  printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
+    "$session_name" "$window_index" "$window_name" "$pane_index" "$pane_id" "$client_name" "$client_tty" "$client_pid"
 }
 
 extract_execute_payload() {
@@ -170,4 +171,35 @@ drain_pid_file_if_present() {
     kill_pid_from_file "$pid_file" "$expected_name" >/dev/null 2>&1 || true
     wait_for_pid_removed "$pid_file" "$max_tries" >/dev/null 2>&1 || true
   fi
+}
+
+write_fake_app_bundle_runner() {
+  app_root="$1"
+  bundle_id="$2"
+  exec_name="${3:-app-runner}"
+  exec_path="$app_root/Contents/MacOS/$exec_name"
+  mkdir -p "$app_root/Contents/MacOS"
+  cat > "$app_root/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>$bundle_id</string>
+</dict>
+</plist>
+EOF
+  cat > "$exec_path" <<'FAKE_APP_RUNNER'
+#!/bin/sh
+pid_file="$1"
+sleep_secs="${2:-30}"
+sleep "$sleep_secs" &
+child_pid=$!
+if [ -n "$pid_file" ]; then
+  printf '%s\n' "$child_pid" > "$pid_file"
+fi
+wait "$child_pid"
+FAKE_APP_RUNNER
+  chmod +x "$exec_path"
+  printf '%s\n' "$exec_path"
 }

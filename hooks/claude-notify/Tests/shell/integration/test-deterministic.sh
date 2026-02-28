@@ -327,7 +327,7 @@ cat > "$FAKE_TMUX" <<'CASE_I117_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
 if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess'one|1|win|3|%9|client'name|/dev/tty's001"
+  printf '%s\n' "sess'one|1|win|3|%9|client'name|/dev/tty's001|421117"
   exit 0
 fi
 exit 0
@@ -605,7 +605,7 @@ cat > "$FAKE_TMUX" <<'CASE_I125_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
 if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|7|win|4|%11|client-redir|/dev/ttys777"
+  printf '%s\n' "sess|7|win|4|%11|client-redir|/dev/ttys777|421125"
   exit 0
 fi
 exit 0
@@ -687,7 +687,7 @@ cat > "$FAKE_TMUX" <<'CASE_I127_TMUX'
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
 if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|8|win|5|%12|client-primary|/dev/ttys998"
+  printf '%s\n' "sess|8|win|5|%12|client-primary|/dev/ttys998|421127"
   exit 0
 fi
 if [ "$1" = "list-clients" ] || { [ "$1" = "-S" ] && [ "$3" = "list-clients" ]; }; then
@@ -758,35 +758,68 @@ else
   fail "I127" "fallback execute payload missing expected recovery steps"
 fi
 
-case_start "I128" "notify.sh carries inferred IntelliJ tmux activate bundle in redirect payload without native -activate"
+case_start "I128" "notify.sh resolves IntelliJ tmux activate bundle from client pid ancestry without native -activate"
 TMP_DIR=$(make_case_tmp_dir "I128")
 FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
 FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_PS="$TMP_DIR/fake-ps.sh"
 FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+FAKE_IDEA_APP="$TMP_DIR/IntelliJ IDEA.app"
+FAKE_IDEA_CLIENT_PID="421128"
 ARGS_LOG="$TMP_DIR/notify-args.log"
 TMUX_LOG="$TMP_DIR/tmux-calls.log"
 ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
 write_fake_notify "$FAKE_NOTIFY"
-cat > "$FAKE_TMUX" <<'CASE_I128_TMUX'
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+write_fake_app_bundle_runner "$FAKE_IDEA_APP" "com.jetbrains.intellij" "idea" >/dev/null
+cat > "$FAKE_PS" <<FAKE_PS_I128
+#!/bin/sh
+pid=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in
+    -p)
+      pid="\$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+case "\$pid" in
+  421128)
+    printf '%s\n' "421127 /usr/bin/tmux -L integration"
+    ;;
+  421127)
+    printf '%s\n' "421126 $FAKE_IDEA_APP/Contents/MacOS/idea --nosplash"
+    ;;
+  421126)
+    printf '%s\n' "1 /sbin/launchd"
+    ;;
+esac
+exit 0
+FAKE_PS_I128
+chmod +x "$FAKE_PS"
+cat > "$FAKE_TMUX" <<CASE_I128_TMUX
 #!/bin/sh
 printf '%s\n' "$*" >> "$TMUX_CALL_LOG"
-if [ "$1" = "display-message" ]; then
-  printf '%s\n' "sess|3|win|2|%8|client-8|/dev/ttys008"
+if [ "\$1" = "display-message" ]; then
+  printf '%s\n' "sess|3|win|2|%8|client-8|/dev/ttys008|$FAKE_IDEA_CLIENT_PID"
   exit 0
 fi
 exit 0
 CASE_I128_TMUX
-write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
 chmod +x "$FAKE_TMUX"
 TMUX="/tmp/fake-socket,333,0" TMUX_PANE="%8" TERM_PROGRAM="tmux" NOTIFY_ACTIVATE_BUNDLE_ID="" \
   NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" NOTIFY_TMUX_BIN="$FAKE_TMUX" TMUX_CALL_LOG="$TMUX_LOG" \
+  NOTIFY_PS_BIN="$FAKE_PS" \
   NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" "$SCRIPT" "activate frontmost inference test" 2>/dev/null
 rc=$?
 wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
 if [ "$rc" -eq 0 ]; then
-  pass "I128" "notify.sh tmux frontmost activate probe exits 0"
+  pass "I128" "notify.sh tmux client-pid activate probe exits 0"
 else
-  fail "I128" "notify.sh tmux frontmost activate probe exited $rc"
+  fail "I128" "notify.sh tmux client-pid activate probe exited $rc"
 fi
 if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
   fail "I128" "notify.sh unexpectedly forwarded native -activate in tmux mode"
@@ -794,18 +827,18 @@ else
   pass "I128" "notify.sh omits native -activate in tmux mode"
 fi
 if grep -q "tmux-redirect.sh'.*'com.jetbrains.intellij'" "$ARGS_LOG"; then
-  pass "I128" "notify.sh passes inferred IntelliJ activate bundle to tmux redirect helper"
+  pass "I128" "notify.sh passes client-pid-resolved IntelliJ activate bundle to tmux redirect helper"
 else
-  fail "I128" "notify.sh did not pass inferred IntelliJ activate bundle to tmux redirect helper"
+  fail "I128" "notify.sh did not pass client-pid-resolved IntelliJ activate bundle to tmux redirect helper"
 fi
 EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
 if [ -n "$EXECUTE_PAYLOAD" ]; then
-  pass "I128" "notify.sh captured execute payload for tmux activate path"
+  pass "I128" "notify.sh captured execute payload for tmux client-pid activate path"
 else
-  fail "I128" "notify.sh did not include execute payload for tmux activate path"
+  fail "I128" "notify.sh did not include execute payload for tmux client-pid activate path"
 fi
-TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
-  /bin/sh -c "$EXECUTE_PAYLOAD"
+TMUX_CALL_LOG="$TMUX_LOG" NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" \
+  ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
 rc=$?
 if [ "$rc" -eq 0 ]; then
   pass "I128" "tmux redirect execute payload runs successfully"
@@ -818,6 +851,11 @@ if grep -q '\[1\]=on run argv' "$ACTIVATE_OSASCRIPT_ARGS_LOG" \
   pass "I128" "tmux redirect passes activate bundle via osascript argv"
 else
   fail "I128" "tmux redirect did not use argv-based osascript activate call"
+fi
+if grep -q "id of app (path to frontmost application as text)" "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  fail "I128" "notify.sh unexpectedly ran frontmost activate probe in tmux client-pid path"
+else
+  pass "I128" "notify.sh skips frontmost activate probe in tmux client-pid path"
 fi
 
 case_start "I129" "notify.sh outside tmux omits activate when inference probe is unavailable"
@@ -932,6 +970,132 @@ if grep -q "activate timeout test" "$ARGS_LOG"; then
   pass "I131" "notify.sh activate-timeout probe still forwards notification payload"
 else
   fail "I131" "notify.sh activate-timeout probe missing notification payload"
+fi
+
+case_start "I132" "notify.sh tmux unresolved client pid ancestry keeps execute activate bundle empty by default fallback"
+TMP_DIR=$(make_case_tmp_dir "I132")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_REDIRECT="$TMP_DIR/fake-tmux-redirect.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+REDIRECT_ARGS_LOG="$TMP_DIR/redirect-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+cat > "$FAKE_TMUX" <<'CASE_I132_TMUX'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|2|win|9|%132|client-132|/dev/ttys132|1"
+  exit 0
+fi
+exit 0
+CASE_I132_TMUX
+cat > "$FAKE_REDIRECT" <<'CASE_I132_REDIRECT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$REDIRECT_ARGS_LOG"
+  i=$((i + 1))
+done
+exit 0
+CASE_I132_REDIRECT
+chmod +x "$FAKE_TMUX" "$FAKE_REDIRECT"
+TMUX="/tmp/fake-socket,132,0" TMUX_PANE="%132" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_REDIRECT_SCRIPT="$FAKE_REDIRECT" REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" \
+  NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" \
+  "$SCRIPT" "tmux unresolved pid fallback none test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I132" "notify.sh tmux unresolved client-pid fallback-none probe exits 0"
+else
+  fail "I132" "notify.sh tmux unresolved client-pid fallback-none probe exited $rc"
+fi
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
+  rc=$?
+else
+  rc=1
+fi
+if [ "$rc" -eq 0 ]; then
+  pass "I132" "tmux fallback-none execute payload runs successfully"
+else
+  fail "I132" "tmux fallback-none execute payload failed (rc=$rc)"
+fi
+if grep -q '^\[6\]=$' "$REDIRECT_ARGS_LOG"; then
+  pass "I132" "tmux fallback-none execute payload carries empty activate bundle argument"
+else
+  fail "I132" "tmux fallback-none execute payload did not carry empty activate bundle argument"
+fi
+if grep -q "id of app (path to frontmost application as text)" "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  fail "I132" "tmux fallback-none unexpectedly invoked frontmost activate probe"
+else
+  pass "I132" "tmux fallback-none avoids frontmost activate probe"
+fi
+
+case_start "I133" "notify.sh tmux unresolved client pid ancestry supports optional fallback frontmost mode"
+TMP_DIR=$(make_case_tmp_dir "I133")
+FAKE_NOTIFY="$TMP_DIR/fake-notify.sh"
+FAKE_TMUX="$TMP_DIR/fake-tmux.sh"
+FAKE_REDIRECT="$TMP_DIR/fake-tmux-redirect.sh"
+FAKE_ACTIVATE_OSASCRIPT="$TMP_DIR/fake-activate-osascript.sh"
+ARGS_LOG="$TMP_DIR/notify-args.log"
+REDIRECT_ARGS_LOG="$TMP_DIR/redirect-args.log"
+ACTIVATE_OSASCRIPT_ARGS_LOG="$TMP_DIR/activate-osascript-args.log"
+write_fake_notify "$FAKE_NOTIFY"
+write_fake_frontmost_osascript "$FAKE_ACTIVATE_OSASCRIPT"
+cat > "$FAKE_TMUX" <<'CASE_I133_TMUX'
+#!/bin/sh
+if [ "$1" = "display-message" ]; then
+  printf '%s\n' "sess|3|win|9|%133|client-133|/dev/ttys133|1"
+  exit 0
+fi
+exit 0
+CASE_I133_TMUX
+cat > "$FAKE_REDIRECT" <<'CASE_I133_REDIRECT'
+#!/bin/sh
+i=0
+for arg in "$@"; do
+  printf '[%d]=%s\n' "$i" "$arg" >> "$REDIRECT_ARGS_LOG"
+  i=$((i + 1))
+done
+exit 0
+CASE_I133_REDIRECT
+chmod +x "$FAKE_TMUX" "$FAKE_REDIRECT"
+TMUX="/tmp/fake-socket,133,0" TMUX_PANE="%133" NOTIFY_BIN="$FAKE_NOTIFY" NOTIFY_ARGS_LOG="$ARGS_LOG" \
+  NOTIFY_TMUX_BIN="$FAKE_TMUX" NOTIFY_TMUX_REDIRECT_SCRIPT="$FAKE_REDIRECT" REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" \
+  NOTIFY_TMUX_ACTIVATE_FALLBACK=frontmost NOTIFY_ACTIVATE_OSASCRIPT_BIN="$FAKE_ACTIVATE_OSASCRIPT" \
+  ACTIVATE_OSASCRIPT_ARGS_LOG="$ACTIVATE_OSASCRIPT_ARGS_LOG" "$SCRIPT" "tmux unresolved pid fallback frontmost test" 2>/dev/null
+rc=$?
+wait_for_file "$ARGS_LOG" 20 >/dev/null 2>&1
+if [ "$rc" -eq 0 ]; then
+  pass "I133" "notify.sh tmux unresolved client-pid fallback-frontmost probe exits 0"
+else
+  fail "I133" "notify.sh tmux unresolved client-pid fallback-frontmost probe exited $rc"
+fi
+EXECUTE_PAYLOAD=$(extract_execute_payload "$ARGS_LOG")
+if [ -n "$EXECUTE_PAYLOAD" ]; then
+  REDIRECT_ARGS_LOG="$REDIRECT_ARGS_LOG" /bin/sh -c "$EXECUTE_PAYLOAD"
+  rc=$?
+else
+  rc=1
+fi
+if [ "$rc" -eq 0 ]; then
+  pass "I133" "tmux fallback-frontmost execute payload runs successfully"
+else
+  fail "I133" "tmux fallback-frontmost execute payload failed (rc=$rc)"
+fi
+if grep -q '^\[6\]=com.jetbrains.intellij$' "$REDIRECT_ARGS_LOG"; then
+  pass "I133" "tmux fallback-frontmost execute payload carries frontmost activate bundle argument"
+else
+  fail "I133" "tmux fallback-frontmost execute payload missing frontmost activate bundle argument"
+fi
+if grep -q "id of app (path to frontmost application as text)" "$ACTIVATE_OSASCRIPT_ARGS_LOG"; then
+  pass "I133" "tmux fallback-frontmost invokes frontmost activate probe"
+else
+  fail "I133" "tmux fallback-frontmost did not invoke frontmost activate probe"
 fi
 
 finish
