@@ -74,9 +74,11 @@ This script accepts:
 - `NOTIFY_SENDER_BUNDLE_ID`: spoof sender bundle ID override (default `com.gwk.claude-notify`).
 - `NOTIFY_SENDER_APP_PATH`: spoof sender app bundle path override (default `claude-notify.app` next to `notify.sh`).
 - `NOTIFY_ACTIVATE_BUNDLE_ID`: optional app bundle activated on click (default auto-infers frontmost app at send time).
+- `NOTIFY_ACTIVATE_OVERRIDE`: override non-tmux activate behavior; set to an app bundle ID to force activation or to an empty value to disable `-activate`.
 - `NOTIFY_ACTIVATE_OSASCRIPT_BIN`: override `osascript` path used for frontmost-app activate inference (default `/usr/bin/osascript`).
 - `NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS`: timeout for activate-bundle inference probe calls (default `150`).
 - `NOTIFY_TMUX_BIN`: override tmux binary path.
+- `NOTIFY_TMUX_ACTIVATE_FALLBACK`: tmux activation fallback policy when client-host resolution fails: `frontmost|none` (default `none`).
 - `NOTIFY_TMUX_CMD_TIMEOUT_MS`: timeout for tmux metadata probe calls (default `200`).
 - `NOTIFY_TMUX_REDIRECT_SCRIPT`: override tmux click redirect helper path (default `tmux-redirect.sh` next to `notify.sh`).
 - `NOTIFY_STDIN_TIMEOUT_MS`: timeout for stdin hook payload reads when no `$1` message is provided (default `150`).

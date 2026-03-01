@@ -15,6 +15,7 @@ make test-e2e
 make test-fast
 make test
 make check-docstrings
+make check-shell-path-casing
 make check-cases-unit
 make check-cases-integration
 make check-cases-e2e
@@ -30,10 +31,11 @@ make check-cases-e2e
 ### Required Case IDs
 
 - Every scenario must be listed in `Tests/required-cases.txt`.
+- `Tests/required-cases.txt` is the source of truth for required IDs.
 - Enforced by `make check-cases-*`.
 - Active ranges:
-  - Unit: `U001-U033`
+  - Unit: `U001-U039`
   - Integration (Swift): `I001-I005`
-  - Integration (shell): `I101-I131`
+  - Integration (shell): `I101-I134`
   - E2E (shell): `E001-E013`
 - Keep `I006-I100` reserved.

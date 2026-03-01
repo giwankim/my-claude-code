@@ -33,7 +33,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) extension
 ```bash
 make build          # Build all components
 make test           # Run all tests (unit + integration + e2e)
-make test-unit      # Swift unit tests + docstring coverage gate
+make test-unit      # Swift + shell unit tests with docstring/case-ID/shell-path gates
 make test-integration  # Swift integration tests
 make test-e2e       # Shell end-to-end tests
 ```
