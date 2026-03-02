@@ -76,4 +76,4 @@
 1. Manual test: run a Claude session, let it respond, press Stop immediately, verify no delayed notification
 2. Check debug logs at `/tmp/claude-notify-notify.log` for generation mismatch exits
 3. Consider adding a warning log line in the binary when supersession is detected (for observability)
-4. Commit and create PR
+4. Address review feedback on PR #12

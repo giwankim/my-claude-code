@@ -354,7 +354,7 @@ private func rewriteArguments(
 public func buildFallbackArguments(from argv: [String]) -> [String] {
   var out = rewriteArguments(
     from: argv,
-    dropValueFlags: ["-sender-mode", "-sender-bundle-id", "-sender-app-path", "-origin-exec", "-generation"],
+    dropValueFlags: ["-sender-mode", "-sender-bundle-id", "-sender-app-path", "-origin-exec"],
     preserveDanglingValueFlags: false
   )
 

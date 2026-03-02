@@ -664,8 +664,11 @@ if let group = args.remove {
 let generation = args.generation
   ?? normalizeOption(ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_GENERATION"])
 
-// Check if a newer notification instance has taken over before proceeding.
-if let fileContent = readPidFileContentFromFile(),
+// Only internal relaunches should self-abort on generation mismatch.
+// A fresh binary from a new notify.sh invocation is always the "newer" one
+// and should proceed to killPrevious() → writePid() as normal.
+if (args.spoofedRun || args.fallbackRun),
+   let fileContent = readPidFileContentFromFile(),
    isSuperseded(ownGeneration: generation, fileGeneration: fileContent.generation) {
   exit(0)
 }
