@@ -1193,4 +1193,93 @@ else
   pass "I134" "tmux wrapped quoted IntelliJ path avoids frontmost activate probe"
 fi
 
+case_start "I135" "PID file includes generation token when CLAUDE_NOTIFY_GENERATION is set"
+drain_notify_pid_file 20
+rm -f "$PID_FILE"
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 CLAUDE_NOTIFY_GENERATION="test_gen_135" \
+  "$NOTIFY" -message "gen-pid-test" -sender-mode off -timeout 10 2>/dev/null &
+I135_PID=$!
+# Wait for PID file to appear
+I135_FOUND=0
+for _i in $(seq 1 30); do
+  if [ -f "$PID_FILE" ]; then
+    I135_FOUND=1
+    break
+  fi
+  sleep 0.1
+done
+if [ "$I135_FOUND" -eq 1 ]; then
+  PID_LINE=$(sed -n '1p' "$PID_FILE")
+  GEN_LINE=$(sed -n '2p' "$PID_FILE")
+  if [ -n "$PID_LINE" ] && [ "$GEN_LINE" = "test_gen_135" ]; then
+    pass "I135" "PID file contains generation token on second line"
+  else
+    fail "I135" "PID file missing generation (pid='${PID_LINE}' gen='${GEN_LINE}')"
+  fi
+else
+  fail "I135" "PID file not created within timeout"
+fi
+kill "$I135_PID" 2>/dev/null; wait "$I135_PID" 2>/dev/null || true
+rm -f "$PID_FILE"
+
+case_start "I136" "PID file is written before spoof relaunch marker"
+drain_notify_pid_file 20
+rm -f "$PID_FILE"
+MARKER="$RELAUNCH_MARKER"
+rm -f "$MARKER"
+SELF_APP="$PROJECT_DIR/claude-notify.app"
+CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH=1 CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER="$MARKER" \
+  CLAUDE_NOTIFY_GENERATION="test_gen_136" \
+  "$NOTIFY" -message "pre-spoof-pid" -sender-mode auto -sender-app-path "$SELF_APP" -timeout 1 2>/dev/null
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I136" "spoof + generation probe exits 0"
+else
+  fail "I136" "spoof + generation probe exited $rc"
+fi
+if [ -f "$MARKER" ] && grep -q '^open .*\.app$' "$MARKER"; then
+  pass "I136" "relaunch marker was written"
+else
+  fail "I136" "relaunch marker missing or no open path"
+fi
+# The PID file should exist (written before relaunch) and contain our generation
+if [ -f "$PID_FILE" ]; then
+  GEN_LINE=$(sed -n '2p' "$PID_FILE")
+  if [ "$GEN_LINE" = "test_gen_136" ]; then
+    pass "I136" "PID file written before spoof relaunch with generation token"
+  else
+    fail "I136" "PID file generation mismatch (expected 'test_gen_136' got '${GEN_LINE}')"
+  fi
+else
+  fail "I136" "PID file not written before spoof relaunch"
+fi
+rm -f "$MARKER"
+
+case_start "I137" "Spoofed helper exits without posting when generation is superseded"
+drain_notify_pid_file 20
+rm -f "$PID_FILE"
+# Write a PID file with a newer generation (simulating a Stop instance that took over)
+printf '%s\n%s\n' "99999" "newer_gen" > "$PID_FILE"
+# Run the binary as a spoofed-run helper with an older generation
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
+  "$NOTIFY" -message "stale-helper" -sender-mode off -spoofed-run -generation "older_gen" -timeout 1 2>/dev/null
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I137" "superseded helper exits 0"
+else
+  fail "I137" "superseded helper exited $rc (expected 0)"
+fi
+# PID file should still contain the newer generation (helper should not have overwritten it)
+if [ -f "$PID_FILE" ]; then
+  GEN_LINE=$(sed -n '2p' "$PID_FILE")
+  if [ "$GEN_LINE" = "newer_gen" ]; then
+    pass "I137" "PID file retains newer generation after superseded helper exits"
+  else
+    fail "I137" "PID file generation changed (expected 'newer_gen' got '${GEN_LINE}')"
+  fi
+else
+  fail "I137" "PID file was removed by superseded helper"
+fi
+rm -f "$PID_FILE"
+
 finish
