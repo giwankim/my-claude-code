@@ -1222,7 +1222,7 @@ fi
 kill "$I135_PID" 2>/dev/null; wait "$I135_PID" 2>/dev/null || true
 rm -f "$PID_FILE"
 
-case_start "I136" "PID file is written before spoof relaunch marker"
+case_start "I136" "Orchestrating parent does not write PID file when delegating to spoof helper"
 drain_notify_pid_file 20
 rm -f "$PID_FILE"
 MARKER="$RELAUNCH_MARKER"
@@ -1242,16 +1242,12 @@ if [ -f "$MARKER" ] && grep -q '^open .*\.app$' "$MARKER"; then
 else
   fail "I136" "relaunch marker missing or no open path"
 fi
-# The PID file should exist (written before relaunch) and contain our generation
-if [ -f "$PID_FILE" ]; then
-  GEN_LINE=$(sed -n '2p' "$PID_FILE")
-  if [ "$GEN_LINE" = "test_gen_136" ]; then
-    pass "I136" "PID file written before spoof relaunch with generation token"
-  else
-    fail "I136" "PID file generation mismatch (expected 'test_gen_136' got '${GEN_LINE}')"
-  fi
+# The PID file should NOT exist — the orchestrating parent exits via the spoof
+# path before reaching killPrevious/writePid. Only the helper should write it.
+if [ ! -f "$PID_FILE" ]; then
+  pass "I136" "parent did not write PID file before spoof relaunch"
 else
-  fail "I136" "PID file not written before spoof relaunch"
+  fail "I136" "parent unexpectedly wrote PID file before spoof relaunch"
 fi
 rm -f "$MARKER"
 

@@ -673,10 +673,6 @@ if (args.spoofedRun || args.fallbackRun),
   exit(0)
 }
 
-killPrevious()
-writePid(generation: generation)
-installSignalHandlers()
-
 if senderSpoofEnabled(args: args) && !args.spoofedRun {
   do {
     let sender = try resolveSenderAppInfo(args: args)
@@ -704,6 +700,10 @@ if senderSpoofEnabled(args: args) && !args.spoofedRun {
     }
   }
 }
+
+killPrevious()
+writePid(generation: generation)
+installSignalHandlers()
 
 let delegate = NotificationDelegate(args: args)
 postNotification(args: args, delegate: delegate)
