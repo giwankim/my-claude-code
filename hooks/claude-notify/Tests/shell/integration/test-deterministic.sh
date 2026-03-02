@@ -1242,8 +1242,9 @@ if [ -f "$MARKER" ] && grep -q '^open .*\.app$' "$MARKER"; then
 else
   fail "I136" "relaunch marker missing or no open path"
 fi
-# The PID file should NOT exist — the orchestrating parent exits via the spoof
-# path before reaching killPrevious/writePid. Only the helper should write it.
+# The PID file should NOT exist — the orchestrating parent calls killPrevious()
+# (no-op on clean state) inside the spoof path but never calls writePid().
+# Only the helper should write the PID file.
 if [ ! -f "$PID_FILE" ]; then
   pass "I136" "parent did not write PID file before spoof relaunch"
 else
@@ -1329,5 +1330,39 @@ assert_file_contains "I139" "$I139_STDERR" "superseded" \
   "stderr contains supersession warning" \
   "stderr missing supersession warning (got: '$(cat "$I139_STDERR")')"
 rm -f "$I139_STDERR" "$PID_FILE"
+
+case_start "I140" "Orchestrating parent removes stale PID file before spoof relaunch"
+drain_notify_pid_file 20
+rm -f "$PID_FILE"
+# Write a stale PID file simulating a prior helper that is already dead.
+DEAD_PID="$(pick_unused_pid)"
+printf '%s\n%s\n' "$DEAD_PID" "older_gen" > "$PID_FILE"
+MARKER="$RELAUNCH_MARKER"
+rm -f "$MARKER"
+SELF_APP="$PROJECT_DIR/claude-notify.app"
+# Run orchestrator with a newer generation, sender-mode auto, SKIP_RELAUNCH=1.
+# The orchestrator enters the spoof block and should killPrevious() before relaunch.
+CLAUDE_NOTIFY_TEST_SKIP_RELAUNCH=1 CLAUDE_NOTIFY_TEST_RELAUNCH_MARKER="$MARKER" \
+  CLAUDE_NOTIFY_GENERATION="newer_gen" \
+  "$NOTIFY" -message "stale-pid-cleanup" -sender-mode auto -sender-app-path "$SELF_APP" -timeout 1 2>/dev/null
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I140" "orchestrator exits 0 after spoof delegation"
+else
+  fail "I140" "orchestrator exited $rc (expected 0)"
+fi
+if [ -f "$MARKER" ] && grep -q '^open .*\.app$' "$MARKER"; then
+  pass "I140" "relaunch marker was written"
+else
+  fail "I140" "relaunch marker missing or no open path"
+fi
+# The stale PID file should have been removed by killPrevious() in the spoof block.
+# Without the fix, the PID file persists because killPrevious() only runs after the spoof block.
+if [ ! -f "$PID_FILE" ]; then
+  pass "I140" "stale PID file removed before spoof relaunch"
+else
+  fail "I140" "stale PID file still exists after spoof delegation (gen='$(sed -n '2p' "$PID_FILE" 2>/dev/null)')"
+fi
+rm -f "$MARKER"
 
 finish
