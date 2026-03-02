@@ -18,6 +18,8 @@ func usage() {
       -sender-app-path  <path>  Explicit .app path for spoof metadata/icon
       -sender-mode      <mode>  Spoof behavior: auto|off|required
       -origin-exec      <path>  Internal: original executable path for fallback
+      -generation        <token> Internal: generation token for supersession detection
+      -spoofed-run              Internal: marks a spoof-helper relaunch
       -fallback-run             Internal: marks a non-spoof fallback run
       -timeout   <seconds>  Seconds to wait for click (default: 90)
       -help                 Show this help
