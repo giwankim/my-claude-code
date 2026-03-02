@@ -50,9 +50,9 @@
   - Tested: 1 shell unit test passing
 
 ## Testing Summary
-- **14 new test cases** added: U040-U053 (unit), I135-I137 (integration)
-- **Full test suite**: `make test-fast` → 108 passed, 0 failed; `make test-e2e` → 23 passed, 0 failed
-- **Total**: 131 tests, 0 failures
+- **New test coverage added**: U040-U053 (unit), I135-I139 (integration)
+- **Full test suite**: `make test-fast` → 111 passed, 0 failed; `make test-e2e` → 23 passed, 0 failed
+- **Total**: 134 tests, 0 failures
 - **Manual testing**: not yet performed (requires real Claude session with Notification + Stop hooks)
 
 ## Key Decisions Made

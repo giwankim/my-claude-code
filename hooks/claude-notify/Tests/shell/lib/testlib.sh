@@ -135,3 +135,12 @@ assert_file_not_contains() {
     pass "$case_id" "$pass_message"
   fi
 }
+
+pick_unused_pid() {
+  _pid=99999
+  while kill -0 "$_pid" 2>/dev/null; do
+    _pid=$((_pid - 1))
+    [ "$_pid" -gt 100 ] || break
+  done
+  printf '%s\n' "$_pid"
+}
