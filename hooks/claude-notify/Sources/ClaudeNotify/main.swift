@@ -679,6 +679,7 @@ let generation = args.generation
 if (args.spoofedRun || args.fallbackRun),
    let fileContent = readPidFileContentFromFile(),
    isSuperseded(ownGeneration: generation, fileGeneration: fileContent.generation) {
+  warning("superseded by newer generation (own=\(generation ?? "nil") file=\(fileContent.generation ?? "nil")); exiting")
   exit(0)
 }
 

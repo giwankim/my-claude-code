@@ -1307,4 +1307,24 @@ fi
 kill "$I138_PID" 2>/dev/null; wait "$I138_PID" 2>/dev/null || true
 rm -f "$PID_FILE"
 
+case_start "I139" "Superseded helper logs warning to stderr before exiting"
+drain_notify_pid_file 20
+rm -f "$PID_FILE"
+I139_STDERR=$(mktemp)
+# Write a PID file with a newer generation
+printf '%s\n%s\n' "99999" "newer_gen_139" > "$PID_FILE"
+# Run as spoofed-run helper with an older generation, capturing stderr
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
+  "$NOTIFY" -message "stale-warn" -sender-mode off -spoofed-run -generation "older_gen_139" -timeout 1 2>"$I139_STDERR"
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "I139" "superseded helper exits 0"
+else
+  fail "I139" "superseded helper exited $rc (expected 0)"
+fi
+assert_file_contains "I139" "$I139_STDERR" "superseded" \
+  "stderr contains supersession warning" \
+  "stderr missing supersession warning (got: '$(cat "$I139_STDERR")')"
+rm -f "$I139_STDERR" "$PID_FILE"
+
 finish
