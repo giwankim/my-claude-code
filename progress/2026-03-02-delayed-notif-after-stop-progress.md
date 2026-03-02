@@ -31,9 +31,9 @@
   - Added `isSuperseded(ownGeneration:fileGeneration:)` function
   - Tested: 4 Swift unit tests passing
 
-- [x] ~~Cycle 4: Pre-spoofing PID registration~~ (I135-I136)
+- [x] ~~Cycle 4: PID ownership only in posting process~~ (I135-I136)
   - Files: `Sources/ClaudeNotify/main.swift`
-  - Moved `killPrevious()`/`writePid()`/`installSignalHandlers()` BEFORE the spoofing block
+  - Ensured only the process that will post the notification runs `killPrevious()`/`writePid()`/`installSignalHandlers()`
   - `writePid()` now writes generation token to second line of PID file
   - Generation read from `-generation` arg or `CLAUDE_NOTIFY_GENERATION` env var
   - Tested: 2 shell integration tests passing
@@ -63,8 +63,8 @@
 - **Fallback behavior**: `isSuperseded()` returns false when either generation is nil (safe for legacy/no-generation callers)
 
 ## Files Changed
-- `hooks/claude-notify/Sources/NotifyCore/NotifyCore.swift` — `PidFileContent`, `formatPidFileContent`, `parsePidFileContent`, `isSuperseded`, `generation` on `NotifyArgs`, parser, `buildRelaunchArguments` generation param, `buildFallbackArguments` strips generation
-- `hooks/claude-notify/Sources/ClaudeNotify/main.swift` — moved PID mgmt before spoofing, generation env/arg reading, supersession check before posting, `readPidFileRaw`, `readPidFileContentFromFile`, `writePid(generation:)`, `relaunchViaSpoofHelper(generation:)`
+- `hooks/claude-notify/Sources/NotifyCore/NotifyCore.swift` — `PidFileContent`, `formatPidFileContent`, `parsePidFileContent`, `isSuperseded`, `generation` on `NotifyArgs`, parser, `buildRelaunchArguments` generation param, `buildFallbackArguments` preserves generation
+- `hooks/claude-notify/Sources/ClaudeNotify/main.swift` — generation env/arg reading, supersession check before posting, spoof relaunch propagation, and PID mgmt in the posting process path (`killPrevious`/`writePid(generation:)`), plus `readPidFileRaw` and `readPidFileContentFromFile`
 - `hooks/claude-notify/notify.sh` — exports `CLAUDE_NOTIFY_GENERATION` before binary launch
 - `hooks/claude-notify/Tests/NotifyCoreTests/UnitArgParserTests.swift` — U045-U046
 - `hooks/claude-notify/Tests/NotifyCoreTests/UnitUtilityTests.swift` — U040-U044, U047-U052
