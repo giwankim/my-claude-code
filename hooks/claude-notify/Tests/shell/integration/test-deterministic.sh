@@ -1255,7 +1255,8 @@ case_start "I137" "Spoofed helper exits without posting when generation is super
 drain_notify_pid_file 20
 rm -f "$PID_FILE"
 # Write a PID file with a newer generation (simulating a Stop instance that took over)
-printf '%s\n%s\n' "99999" "newer_gen" > "$PID_FILE"
+DEAD_PID="$(pick_unused_pid)"
+printf '%s\n%s\n' "$DEAD_PID" "newer_gen" > "$PID_FILE"
 # Run the binary as a spoofed-run helper with an older generation
 CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
   "$NOTIFY" -message "stale-helper" -sender-mode off -spoofed-run -generation "older_gen" -timeout 1 2>/dev/null
@@ -1282,7 +1283,8 @@ case_start "I138" "Fresh binary with different generation proceeds past older PI
 drain_notify_pid_file 20
 rm -f "$PID_FILE"
 # Write a PID file with an older generation (simulating a prior Notification hook)
-printf '%s\n%s\n' "99999" "older_gen" > "$PID_FILE"
+DEAD_PID="$(pick_unused_pid)"
+printf '%s\n%s\n' "$DEAD_PID" "older_gen" > "$PID_FILE"
 # Run a fresh (non-spoofed) binary with a newer generation — simulates Stop hook
 CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
   "$NOTIFY" -message "stop-notif" -sender-mode off -generation "newer_gen" -timeout 1 2>/dev/null &
@@ -1312,7 +1314,8 @@ drain_notify_pid_file 20
 rm -f "$PID_FILE"
 I139_STDERR=$(mktemp)
 # Write a PID file with a newer generation
-printf '%s\n%s\n' "99999" "newer_gen_139" > "$PID_FILE"
+DEAD_PID="$(pick_unused_pid)"
+printf '%s\n%s\n' "$DEAD_PID" "newer_gen_139" > "$PID_FILE"
 # Run as spoofed-run helper with an older generation, capturing stderr
 CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
   "$NOTIFY" -message "stale-warn" -sender-mode off -spoofed-run -generation "older_gen_139" -timeout 1 2>"$I139_STDERR"
