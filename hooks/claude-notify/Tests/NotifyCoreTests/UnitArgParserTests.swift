@@ -81,4 +81,16 @@ final class UnitArgParserTests: XCTestCase {
       XCTAssertEqual(error as? ArgParseError, .helpRequested)
     }
   }
+
+  /// Verifies -generation flag parses into the generation field.
+  func test_U045_parseAcceptsGenerationFlag() throws {
+    let parsed = try ArgumentParser.parse(["-message", "x", "-generation", "42_1709000000"])
+    XCTAssertEqual(parsed.generation, "42_1709000000")
+  }
+
+  /// Verifies generation defaults to nil when flag is absent.
+  func test_U046_parseDefaultsGenerationToNil() throws {
+    let parsed = try ArgumentParser.parse(["-message", "x"])
+    XCTAssertNil(parsed.generation)
+  }
 }

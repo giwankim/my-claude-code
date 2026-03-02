@@ -143,20 +143,29 @@ func ensurePidDirectoryExists() -> Bool {
   }
 }
 
-/// Reads and validates a PID value from the runtime PID file.
-func readPidFromFile() -> pid_t? {
+/// Reads raw text content from the runtime PID file.
+func readPidFileRaw() -> String? {
   let fd = open(pidPath, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
   guard fd >= 0 else { return nil }
   defer { close(fd) }
 
-  var buffer = [UInt8](repeating: 0, count: 64)
+  var buffer = [UInt8](repeating: 0, count: 256)
   let size = read(fd, &buffer, buffer.count)
   guard size > 0 else { return nil }
 
-  guard let text = String(bytes: buffer.prefix(Int(size)), encoding: .utf8) else { return nil }
-  let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-  guard let pid = pid_t(trimmed), pid > 0 else { return nil }
-  return pid
+  return String(bytes: buffer.prefix(Int(size)), encoding: .utf8)
+}
+
+/// Reads and validates a PID value from the runtime PID file.
+func readPidFromFile() -> pid_t? {
+  guard let text = readPidFileRaw() else { return nil }
+  return parsePidFileContent(text)?.pid
+}
+
+/// Reads the full PID file content including generation token.
+func readPidFileContentFromFile() -> PidFileContent? {
+  guard let text = readPidFileRaw() else { return nil }
+  return parsePidFileContent(text)
 }
 
 /// Resolves the current executable path for relaunch and identity checks.
@@ -241,7 +250,7 @@ func killPrevious() {
 }
 
 /// Creates the runtime PID file with race-resistant filesystem flags.
-func writePid() {
+func writePid(generation: String?) {
   guard ensurePidDirectoryExists() else { return }
 
   if let existingPID = readPidFromFile() {
@@ -261,7 +270,7 @@ func writePid() {
   }
   defer { close(fd) }
 
-  let payload = Data("\(getpid())\n".utf8)
+  let payload = Data(formatPidFileContent(pid: getpid(), generation: generation).utf8)
   let wroteAll = payload.withUnsafeBytes { rawBuffer -> Bool in
     guard let base = rawBuffer.baseAddress else { return false }
     var remaining = rawBuffer.count
@@ -451,10 +460,11 @@ func tryAutoFallbackIfNeeded(args: NotifyArgs) {
 }
 
 /// Relaunches the prepared helper app and waits for completion.
-func relaunchViaSpoofHelper(executableURL: URL) throws -> Int32 {
+func relaunchViaSpoofHelper(executableURL: URL, generation: String?) throws -> Int32 {
   let forwardedArgs = buildRelaunchArguments(
     from: Array(CommandLine.arguments.dropFirst()),
-    originExecutablePath: currentExecutablePath()
+    originExecutablePath: currentExecutablePath(),
+    generation: generation
   )
 
   let helperAppURL = executableURL
@@ -651,6 +661,19 @@ if let group = args.remove {
   handleRemove(group: group)
 }
 
+let generation = args.generation
+  ?? normalizeOption(ProcessInfo.processInfo.environment["CLAUDE_NOTIFY_GENERATION"])
+
+// Check if a newer notification instance has taken over before proceeding.
+if let fileContent = readPidFileContentFromFile(),
+   isSuperseded(ownGeneration: generation, fileGeneration: fileContent.generation) {
+  exit(0)
+}
+
+killPrevious()
+writePid(generation: generation)
+installSignalHandlers()
+
 if senderSpoofEnabled(args: args) && !args.spoofedRun {
   do {
     let sender = try resolveSenderAppInfo(args: args)
@@ -667,7 +690,7 @@ if senderSpoofEnabled(args: args) && !args.spoofedRun {
       sourceExecutablePath: sourceExecutablePath,
       options: options
     )
-    let status = try relaunchViaSpoofHelper(executableURL: helperExecutable)
+    let status = try relaunchViaSpoofHelper(executableURL: helperExecutable, generation: generation)
     exit(status)
   } catch {
     let message = "sender spoof unavailable: \(error.localizedDescription)"
@@ -678,10 +701,6 @@ if senderSpoofEnabled(args: args) && !args.spoofedRun {
     }
   }
 }
-
-killPrevious()
-writePid()
-installSignalHandlers()
 
 let delegate = NotificationDelegate(args: args)
 postNotification(args: args, delegate: delegate)

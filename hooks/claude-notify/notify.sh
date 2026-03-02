@@ -330,7 +330,11 @@ else
     log_debug "stdin payload read failed rc=$payload_rc; using fallback message"
   fi
 fi
-log_debug "notify.sh start tmux=${TMUX:-<empty>} pane=${TMUX_PANE:-<empty>} term_program=${TERM_PROGRAM:-<empty>} sender_mode=$SENDER_MODE"
+# Generate a unique generation token for supersession detection across spoof relaunches.
+CLAUDE_NOTIFY_GENERATION="${CLAUDE_NOTIFY_GENERATION:-$$_$(date +%s)}"
+export CLAUDE_NOTIFY_GENERATION
+
+log_debug "notify.sh start tmux=${TMUX:-<empty>} pane=${TMUX_PANE:-<empty>} term_program=${TERM_PROGRAM:-<empty>} sender_mode=$SENDER_MODE generation=$CLAUDE_NOTIFY_GENERATION"
 
 if [ -n "$TMUX" ]; then
   # Get tmux context in a single subprocess, then parse into fixed fields.

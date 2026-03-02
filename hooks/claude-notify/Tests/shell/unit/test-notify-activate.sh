@@ -761,4 +761,42 @@ else
   fail "U039" "notify.sh resolver returned zero when CFBundleIdentifier is missing"
 fi
 
+case_start "U053" "notify.sh exports CLAUDE_NOTIFY_GENERATION env var to the binary"
+TMP_DIR=$(make_case_tmp_dir "U053")
+ENV_LOG="$TMP_DIR/env.log"
+FAKE_BIN="$TMP_DIR/fake-notify"
+# The fake binary captures CLAUDE_NOTIFY_GENERATION to ENV_LOG.
+# ENV_LOG path is embedded at write time (unquoted heredoc).
+cat > "$FAKE_BIN" <<FAKE_BIN_U053
+#!/bin/sh
+env | grep '^CLAUDE_NOTIFY_GENERATION=' > "$ENV_LOG"
+FAKE_BIN_U053
+chmod +x "$FAKE_BIN"
+NOTIFY_BIN="$FAKE_BIN" \
+  NOTIFY_SENDER_MODE=off NOTIFY_STDIN_TIMEOUT_MS=0 \
+  NOTIFY_TMUX_CMD_TIMEOUT_MS=0 NOTIFY_ACTIVATE_PROBE_TIMEOUT_MS=0 \
+  "$SCRIPT" "generation env test" </dev/null 2>/dev/null
+rc=$?
+assert_rc_eq "U053" "$rc" 0 \
+  "notify.sh generation env probe exits 0"
+# Wait briefly for background binary to write the env log.
+U053_FOUND=0
+for _i in $(seq 1 20); do
+  if [ -s "$ENV_LOG" ]; then
+    U053_FOUND=1
+    break
+  fi
+  sleep 0.1
+done
+if [ "$U053_FOUND" -eq 1 ] && grep -q '^CLAUDE_NOTIFY_GENERATION=' "$ENV_LOG"; then
+  GEN_VALUE=$(sed 's/^CLAUDE_NOTIFY_GENERATION=//' "$ENV_LOG")
+  if [ -n "$GEN_VALUE" ]; then
+    pass "U053" "notify.sh exports non-empty CLAUDE_NOTIFY_GENERATION=$GEN_VALUE"
+  else
+    fail "U053" "notify.sh exports empty CLAUDE_NOTIFY_GENERATION"
+  fi
+else
+  fail "U053" "notify.sh did not export CLAUDE_NOTIFY_GENERATION to binary"
+fi
+
 finish

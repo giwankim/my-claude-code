@@ -123,4 +123,88 @@ final class UnitUtilityTests: XCTestCase {
       "-origin-exec", "/tmp/current"
     ])
   }
+
+  /// Verifies PID file content formatting includes both PID and generation token.
+  func test_U040_formatPidFileContentIncludesPidAndGeneration() {
+    let content = formatPidFileContent(pid: 12345, generation: "gen_abc")
+    XCTAssertEqual(content, "12345\ngen_abc\n")
+  }
+
+  /// Verifies PID file content formatting works without a generation token.
+  func test_U041_formatPidFileContentWithoutGeneration() {
+    let content = formatPidFileContent(pid: 99, generation: nil)
+    XCTAssertEqual(content, "99\n")
+  }
+
+  /// Verifies PID file content parsing extracts both PID and generation token.
+  func test_U042_parsePidFileContentExtractsPidAndGeneration() {
+    let result = parsePidFileContent("12345\ngen_abc\n")
+    XCTAssertNotNil(result)
+    XCTAssertEqual(result?.pid, 12345)
+    XCTAssertEqual(result?.generation, "gen_abc")
+  }
+
+  /// Verifies PID file content parsing handles legacy PID-only format.
+  func test_U043_parsePidFileContentHandlesLegacyPidOnly() {
+    let result = parsePidFileContent("12345\n")
+    XCTAssertNotNil(result)
+    XCTAssertEqual(result?.pid, 12345)
+    XCTAssertNil(result?.generation)
+  }
+
+  /// Verifies PID file content parsing rejects invalid input.
+  func test_U044_parsePidFileContentRejectsInvalidInput() {
+    XCTAssertNil(parsePidFileContent(""))
+    XCTAssertNil(parsePidFileContent("notanumber\n"))
+    XCTAssertNil(parsePidFileContent("0\n"))
+    XCTAssertNil(parsePidFileContent("-1\n"))
+  }
+
+  /// Verifies relaunch argument rewriting forwards generation token from parameter.
+  func test_U047_buildRelaunchArgumentsForwardsGeneration() {
+    let rewritten = buildRelaunchArguments(
+      from: [
+        "-message", "done",
+        "-sender-mode", "auto"
+      ],
+      originExecutablePath: "/tmp/current",
+      generation: "42_1700000000"
+    )
+
+    XCTAssertTrue(rewritten.contains("-generation"))
+    if let idx = rewritten.firstIndex(of: "-generation") {
+      XCTAssertEqual(rewritten[rewritten.index(after: idx)], "42_1700000000")
+    }
+  }
+
+  /// Verifies fallback argument rewriting strips generation token.
+  func test_U048_buildFallbackArgumentsStripsGeneration() {
+    let rewritten = buildFallbackArguments(from: [
+      "-message", "hello",
+      "-generation", "42_1700000000",
+      "-sender-mode", "auto"
+    ])
+
+    XCTAssertFalse(rewritten.contains("-generation"))
+  }
+
+  /// Verifies superseded detection when file generation differs from own generation.
+  func test_U049_isSupersededReturnsTrueWhenGenerationsDiffer() {
+    XCTAssertTrue(isSuperseded(ownGeneration: "gen_old", fileGeneration: "gen_new"))
+  }
+
+  /// Verifies not superseded when generations match.
+  func test_U050_isSupersededReturnsFalseWhenGenerationsMatch() {
+    XCTAssertFalse(isSuperseded(ownGeneration: "gen_1", fileGeneration: "gen_1"))
+  }
+
+  /// Verifies not superseded when own generation is nil (legacy/no-generation mode).
+  func test_U051_isSupersededReturnsFalseWhenOwnGenerationNil() {
+    XCTAssertFalse(isSuperseded(ownGeneration: nil, fileGeneration: "gen_1"))
+  }
+
+  /// Verifies not superseded when file generation is nil (legacy PID file).
+  func test_U052_isSupersededReturnsFalseWhenFileGenerationNil() {
+    XCTAssertFalse(isSuperseded(ownGeneration: "gen_1", fileGeneration: nil))
+  }
 }

@@ -25,6 +25,7 @@ public struct NotifyArgs: Equatable, Sendable {
   public var spoofedRun = false
   public var fallbackRun = false
   public var timeout: TimeInterval = 90
+  public var generation: String?
 
   /// Creates a default argument container with baseline runtime values.
   public init() {}
@@ -106,6 +107,8 @@ public struct ArgumentParser {
           throw ArgParseError.invalidTimeout
         }
         args.timeout = timeout
+      case "-generation":
+        args.generation = try takeValue(flag, from: &values)
       default:
         throw ArgParseError.unknownFlag(flag)
       }
@@ -131,6 +134,68 @@ public struct ArgumentParser {
     }
     return argv.removeFirst()
   }
+}
+
+/// Holds the parsed contents of a PID file: process ID and optional generation token.
+public struct PidFileContent: Equatable, Sendable {
+  public var pid: Int32
+  public var generation: String?
+
+  /// Creates a PID file content value.
+  public init(pid: Int32, generation: String? = nil) {
+    self.pid = pid
+    self.generation = generation
+  }
+}
+
+/// Formats a PID and optional generation token for writing to a PID file.
+///
+/// - Parameters:
+///   - pid: The process identifier to record.
+///   - generation: Optional generation token for supersession detection.
+/// - Returns: Formatted string suitable for writing to the PID file.
+public func formatPidFileContent(pid: Int32, generation: String?) -> String {
+  if let generation {
+    return "\(pid)\n\(generation)\n"
+  }
+  return "\(pid)\n"
+}
+
+/// Parses PID file content text into a structured value.
+///
+/// - Parameter text: Raw PID file content string.
+/// - Returns: Parsed content, or `nil` when the PID is missing or invalid.
+public func parsePidFileContent(_ text: String) -> PidFileContent? {
+  let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !trimmed.isEmpty else { return nil }
+
+  let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+  guard let pidString = lines.first,
+        let pid = Int32(pidString),
+        pid > 0 else {
+    return nil
+  }
+
+  let generation: String?
+  if lines.count > 1 {
+    let gen = String(lines[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+    generation = gen.isEmpty ? nil : gen
+  } else {
+    generation = nil
+  }
+
+  return PidFileContent(pid: pid, generation: generation)
+}
+
+/// Determines whether this process has been superseded by a newer notification instance.
+///
+/// - Parameters:
+///   - ownGeneration: The generation token this process was launched with.
+///   - fileGeneration: The generation token currently in the PID file.
+/// - Returns: `true` when both generations are present and differ.
+public func isSuperseded(ownGeneration: String?, fileGeneration: String?) -> Bool {
+  guard let own = ownGeneration, let file = fileGeneration else { return false }
+  return own != file
 }
 
 /// Normalizes optional string input by trimming whitespace and dropping empties.
@@ -223,7 +288,7 @@ public func iconCandidates(info: [String: Any]) -> [String] {
 private let flagsWithValues: Set<String> = [
   "-title", "-subtitle", "-message", "-sound", "-group", "-execute",
   "-activate", "-remove", "-timeout", "-sender-mode", "-sender-bundle-id",
-  "-sender-app-path", "-origin-exec"
+  "-sender-app-path", "-origin-exec", "-generation"
 ]
 
 private let internalMarkerFlags: Set<String> = [
@@ -289,7 +354,7 @@ private func rewriteArguments(
 public func buildFallbackArguments(from argv: [String]) -> [String] {
   var out = rewriteArguments(
     from: argv,
-    dropValueFlags: ["-sender-mode", "-sender-bundle-id", "-sender-app-path", "-origin-exec"],
+    dropValueFlags: ["-sender-mode", "-sender-bundle-id", "-sender-app-path", "-origin-exec", "-generation"],
     preserveDanglingValueFlags: false
   )
 
@@ -314,17 +379,21 @@ public func buildRetrySpoofArguments(from argv: [String]) -> [String] {
 /// - Parameters:
 ///   - argv: Original process arguments without executable name.
 ///   - originExecutablePath: Path to the original executable for fallback/retry runs.
+///   - generation: Optional generation token to inject (used when generation came from env, not CLI).
 /// - Returns: Relaunch arguments containing internal relaunch markers.
-public func buildRelaunchArguments(from argv: [String], originExecutablePath: String?) -> [String] {
+public func buildRelaunchArguments(from argv: [String], originExecutablePath: String?, generation: String? = nil) -> [String] {
   var out = rewriteArguments(
     from: argv,
-    dropValueFlags: ["-origin-exec"],
+    dropValueFlags: ["-origin-exec", "-generation"],
     preserveDanglingValueFlags: true
   )
 
   out.append("-spoofed-run")
   if let origin = normalizeOption(originExecutablePath) {
     out.append(contentsOf: ["-origin-exec", origin])
+  }
+  if let gen = normalizeOption(generation) {
+    out.append(contentsOf: ["-generation", gen])
   }
   return out
 }
