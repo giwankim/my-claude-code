@@ -684,6 +684,7 @@ if (args.spoofedRun || args.fallbackRun),
 }
 
 if senderSpoofEnabled(args: args) && !args.spoofedRun {
+  killPrevious()
   do {
     let sender = try resolveSenderAppInfo(args: args)
     guard let sourceExecutablePath = currentExecutablePath() else {

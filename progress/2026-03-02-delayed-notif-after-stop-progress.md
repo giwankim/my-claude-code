@@ -50,9 +50,9 @@
   - Tested: 1 shell unit test passing
 
 ## Testing Summary
-- **New test coverage added**: U040-U053 (unit), I135-I139 (integration)
-- **Full test suite**: `make test-fast` → 111 passed, 0 failed; `make test-e2e` → 23 passed, 0 failed
-- **Total**: 134 tests, 0 failures
+- **New test coverage added**: U040-U053 (unit), I135-I140 (integration)
+- **Full test suite**: `make test-fast` → 175 passed, 0 failed; `make test-e2e` → 23 passed, 0 failed
+- **Total**: 198 tests, 0 failures
 - **Manual testing**: not yet performed (requires real Claude session with Notification + Stop hooks)
 
 ## Key Decisions Made
@@ -69,7 +69,7 @@
 - `hooks/claude-notify/Tests/NotifyCoreTests/UnitArgParserTests.swift` — U045-U046
 - `hooks/claude-notify/Tests/NotifyCoreTests/UnitUtilityTests.swift` — U040-U044, U047-U052
 - `hooks/claude-notify/Tests/shell/unit/test-notify-activate.sh` — U053
-- `hooks/claude-notify/Tests/shell/integration/test-deterministic.sh` — I135-I137
+- `hooks/claude-notify/Tests/shell/integration/test-deterministic.sh` — I135-I140
 - `hooks/claude-notify/Tests/required-cases.txt` — registered all new case IDs
 
 ## Next Steps
