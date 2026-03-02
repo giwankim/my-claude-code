@@ -1199,16 +1199,7 @@ rm -f "$PID_FILE"
 CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 CLAUDE_NOTIFY_GENERATION="test_gen_135" \
   "$NOTIFY" -message "gen-pid-test" -sender-mode off -timeout 10 2>/dev/null &
 I135_PID=$!
-# Wait for PID file to appear
-I135_FOUND=0
-for _i in $(seq 1 30); do
-  if [ -f "$PID_FILE" ]; then
-    I135_FOUND=1
-    break
-  fi
-  sleep 0.1
-done
-if [ "$I135_FOUND" -eq 1 ]; then
+if wait_for_file "$PID_FILE" 30; then
   PID_LINE=$(sed -n '1p' "$PID_FILE")
   GEN_LINE=$(sed -n '2p' "$PID_FILE")
   if [ -n "$PID_LINE" ] && [ "$GEN_LINE" = "test_gen_135" ]; then
@@ -1290,19 +1281,7 @@ printf '%s\n%s\n' "$DEAD_PID" "older_gen" > "$PID_FILE"
 CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
   "$NOTIFY" -message "stop-notif" -sender-mode off -generation "newer_gen" -timeout 1 2>/dev/null &
 I138_PID=$!
-# Wait for PID file to be updated
-I138_FOUND=0
-for _i in $(seq 1 30); do
-  if [ -f "$PID_FILE" ]; then
-    GEN_LINE=$(sed -n '2p' "$PID_FILE")
-    if [ "$GEN_LINE" = "newer_gen" ]; then
-      I138_FOUND=1
-      break
-    fi
-  fi
-  sleep 0.1
-done
-if [ "$I138_FOUND" -eq 1 ]; then
+if wait_for_file_contains "$PID_FILE" "newer_gen" 30; then
   pass "I138" "fresh binary overwrote PID file with newer generation"
 else
   fail "I138" "fresh binary did not update PID file (gen='$(sed -n '2p' "$PID_FILE" 2>/dev/null)')"
