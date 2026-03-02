@@ -149,11 +149,20 @@ func readPidFileRaw() -> String? {
   guard fd >= 0 else { return nil }
   defer { close(fd) }
 
+  var allBytes = Data()
   var buffer = [UInt8](repeating: 0, count: 256)
-  let size = read(fd, &buffer, buffer.count)
-  guard size > 0 else { return nil }
-
-  return String(bytes: buffer.prefix(Int(size)), encoding: .utf8)
+  while true {
+    let size = read(fd, &buffer, buffer.count)
+    if size > 0 {
+      allBytes.append(contentsOf: buffer[0..<size])
+      continue
+    }
+    if size == 0 { break }
+    if errno == EINTR { continue }
+    return nil
+  }
+  guard !allBytes.isEmpty else { return nil }
+  return String(data: allBytes, encoding: .utf8)
 }
 
 /// Reads and validates a PID value from the runtime PID file.

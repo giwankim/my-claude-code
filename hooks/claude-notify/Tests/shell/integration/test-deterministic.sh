@@ -1278,4 +1278,33 @@ else
 fi
 rm -f "$PID_FILE"
 
+case_start "I138" "Fresh binary with different generation proceeds past older PID file"
+drain_notify_pid_file 20
+rm -f "$PID_FILE"
+# Write a PID file with an older generation (simulating a prior Notification hook)
+printf '%s\n%s\n' "99999" "older_gen" > "$PID_FILE"
+# Run a fresh (non-spoofed) binary with a newer generation — simulates Stop hook
+CLAUDE_NOTIFY_TEST_SKIP_DELIVERY=1 \
+  "$NOTIFY" -message "stop-notif" -sender-mode off -generation "newer_gen" -timeout 1 2>/dev/null &
+I138_PID=$!
+# Wait for PID file to be updated
+I138_FOUND=0
+for _i in $(seq 1 30); do
+  if [ -f "$PID_FILE" ]; then
+    GEN_LINE=$(sed -n '2p' "$PID_FILE")
+    if [ "$GEN_LINE" = "newer_gen" ]; then
+      I138_FOUND=1
+      break
+    fi
+  fi
+  sleep 0.1
+done
+if [ "$I138_FOUND" -eq 1 ]; then
+  pass "I138" "fresh binary overwrote PID file with newer generation"
+else
+  fail "I138" "fresh binary did not update PID file (gen='$(sed -n '2p' "$PID_FILE" 2>/dev/null)')"
+fi
+kill "$I138_PID" 2>/dev/null; wait "$I138_PID" 2>/dev/null || true
+rm -f "$PID_FILE"
+
 finish
