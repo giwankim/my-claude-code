@@ -87,6 +87,20 @@ This script accepts:
 - `NOTIFY_ISOLATE_HELPER_BUNDLE_ID`: helper isolation toggle (default `1`).
 - `NOTIFY_ALLOW_NONISOLATED_RETRY`: fallback behavior toggle (default `0`).
 - `NOTIFY_OSASCRIPT_BIN`: override `osascript` path for delivery fallback when `UNUserNotificationCenter` is unavailable.
+- `CLAUDE_NOTIFY_GENERATION`: unique generation token for supersession detection across spoof relaunches. Default: `$$_$(date +%s)` (PID + underscore + epoch seconds, e.g. `12345_1709000001`). Exported at runtime and propagated to the Swift binary via the `-generation` CLI flag on spoof and fallback relaunches. The binary writes this token into the PID file; internal relaunches check it and exit early if a newer generation has taken over. Override in tests or operator scripts to control supersession behavior.
+
+### Generation token example
+
+```bash
+# Override the generation token for testing:
+CLAUDE_NOTIFY_GENERATION="test_gen_1" ~/.claude/hooks/claude-notify/notify.sh "hello"
+
+# The token appears in debug logs when NOTIFY_DEBUG_LOG is set:
+#   notify.sh start ... generation=test_gen_1
+# And is written as the second line of the PID file at $TMPDIR/claude-notify/claude-notify.pid:
+#   12345
+#   test_gen_1
+```
 
 ## Stop hook recommendations (IDE terminals)
 
