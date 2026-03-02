@@ -778,7 +778,8 @@ NOTIFY_BIN="$FAKE_BIN" \
   "$SCRIPT" "generation env test" </dev/null 2>/dev/null
 rc=$?
 assert_rc_eq "U053" "$rc" 0 \
-  "notify.sh generation env probe exits 0"
+  "notify.sh generation env probe exits 0" \
+  "notify.sh generation env probe exited $rc"
 # Wait briefly for background binary to write the env log.
 U053_FOUND=0
 for _i in $(seq 1 20); do

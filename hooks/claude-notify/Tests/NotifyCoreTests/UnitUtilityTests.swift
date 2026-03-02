@@ -177,15 +177,18 @@ final class UnitUtilityTests: XCTestCase {
     }
   }
 
-  /// Verifies fallback argument rewriting strips generation token.
-  func test_U048_buildFallbackArgumentsStripsGeneration() {
+  /// Verifies fallback argument rewriting preserves generation token.
+  func test_U048_buildFallbackArgumentsPreservesGeneration() {
     let rewritten = buildFallbackArguments(from: [
       "-message", "hello",
       "-generation", "42_1700000000",
       "-sender-mode", "auto"
     ])
 
-    XCTAssertFalse(rewritten.contains("-generation"))
+    XCTAssertTrue(rewritten.contains("-generation"))
+    if let idx = rewritten.firstIndex(of: "-generation") {
+      XCTAssertEqual(rewritten[rewritten.index(after: idx)], "42_1700000000")
+    }
   }
 
   /// Verifies superseded detection when file generation differs from own generation.
