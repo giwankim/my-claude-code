@@ -524,7 +524,7 @@ public func resolveSenderIconFile(appURL: URL, info: [String: Any], fileManager:
     return nil
   }
 
-  return files.sorted().first { $0.lowercased().hasSuffix(".icns") }
+  return files.filter { $0.lowercased().hasSuffix(".icns") }.sorted().first
 }
 
 /// Resolves the sender application URL from explicit path or bundle identifier.
@@ -718,9 +718,7 @@ public func prepareSpoofHelper(
       try fm.createDirectory(at: macOSURL, withIntermediateDirectories: true)
       try fm.createDirectory(at: resourcesURL, withIntermediateDirectories: true)
 
-      if fm.fileExists(atPath: helperExecutable.path) {
-        try fm.removeItem(at: helperExecutable)
-      }
+      try? fm.removeItem(at: helperExecutable)
       try fm.copyItem(atPath: sourceExecutablePath, toPath: helperExecutable.path)
 
       var plist: [String: Any] = [
@@ -739,9 +737,7 @@ public func prepareSpoofHelper(
         let sourceIcon = sender.appURL.appendingPathComponent("Contents/Resources/\(iconFile)")
         let destIcon = resourcesURL.appendingPathComponent(iconFile)
         if fm.fileExists(atPath: sourceIcon.path) {
-          if fm.fileExists(atPath: destIcon.path) {
-            try fm.removeItem(at: destIcon)
-          }
+          try? fm.removeItem(at: destIcon)
           try fm.copyItem(at: sourceIcon, to: destIcon)
           plist["CFBundleIconFile"] = iconFile
         }
