@@ -226,6 +226,7 @@ final class UnitUtilityTests: XCTestCase {
     signerCalled = false
     let exec2 = try prepareSpoofHelper(
       sender: sender, sourceExecutablePath: sourceExec.path, options: options)
+    XCTAssertEqual(exec2, exec1)
     XCTAssertTrue(signerCalled)
     let content = try String(contentsOf: exec2, encoding: .utf8)
     XCTAssertEqual(content, "replaced")
@@ -239,7 +240,7 @@ final class UnitUtilityTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: tmp) }
 
     try FileManager.default.createDirectory(at: resourcesDir, withIntermediateDirectories: true)
-    try "".write(to: resourcesDir.appendingPathComponent("readme.txt"),
+    try "".write(to: resourcesDir.appendingPathComponent("AAA.txt"),
                  atomically: true, encoding: .utf8)
     try "".write(to: resourcesDir.appendingPathComponent("Zebra.icns"),
                  atomically: true, encoding: .utf8)

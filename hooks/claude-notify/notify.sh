@@ -468,7 +468,6 @@ EOF
         fi
         log_debug "tmux activation source=${ACTIVATE_SOURCE:-<empty>} client_pid=${CLIENT_PID:-<empty>} resolved app path=${TMUX_RESOLVED_APP_PATH:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>} fallback_policy=$TMUX_ACTIVATE_FALLBACK"
 
-        LAUNCH_EXTRA=""
         if [ -n "$SESSION" ] && [ -n "$WINDOW_INDEX" ] && [ -n "$WINDOW_NAME" ]; then
           LAUNCH_SUBTITLE="$SESSION:$WINDOW_INDEX.$WINDOW_NAME"
         else
