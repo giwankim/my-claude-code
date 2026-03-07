@@ -191,6 +191,66 @@ final class UnitUtilityTests: XCTestCase {
     }
   }
 
+  /// Verifies prepareSpoofHelper replaces an existing helper executable.
+  func test_U055_prepareSpoofHelperReplacesExistingExecutable() throws {
+    let tmp = FileManager.default.temporaryDirectory
+      .appendingPathComponent("test-U055-\(ProcessInfo.processInfo.processIdentifier)")
+    defer { try? FileManager.default.removeItem(at: tmp) }
+
+    let sourceExec = tmp.appendingPathComponent("source-exec")
+    try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    try "original".write(to: sourceExec, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes(
+      [.posixPermissions: 0o755], ofItemAtPath: sourceExec.path)
+
+    let sender = SenderAppInfo(
+      bundleID: "com.test.sender",
+      displayName: "Test",
+      appURL: URL(fileURLWithPath: "/Applications/Test.app"),
+      iconFile: nil)
+
+    var signerCalled = false
+    let options = HelperPreparationOptions(
+      isolateHelperBundleID: false,
+      baseBundleID: "com.test.notify",
+      baseDirectories: [tmp],
+      fileManager: .default,
+      signer: { _, _ in signerCalled = true })
+
+    let exec1 = try prepareSpoofHelper(
+      sender: sender, sourceExecutablePath: sourceExec.path, options: options)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: exec1.path))
+
+    try "replaced".write(to: sourceExec, atomically: true, encoding: .utf8)
+
+    signerCalled = false
+    let exec2 = try prepareSpoofHelper(
+      sender: sender, sourceExecutablePath: sourceExec.path, options: options)
+    XCTAssertTrue(signerCalled)
+    let content = try String(contentsOf: exec2, encoding: .utf8)
+    XCTAssertEqual(content, "replaced")
+  }
+
+  /// Verifies icon fallback scan returns alphabetically first .icns file.
+  func test_U056_resolveSenderIconFileFallbackScansResourcesDirectory() throws {
+    let tmp = FileManager.default.temporaryDirectory
+      .appendingPathComponent("test-U056-\(ProcessInfo.processInfo.processIdentifier)")
+    let resourcesDir = tmp.appendingPathComponent("Contents/Resources")
+    defer { try? FileManager.default.removeItem(at: tmp) }
+
+    try FileManager.default.createDirectory(at: resourcesDir, withIntermediateDirectories: true)
+    try "".write(to: resourcesDir.appendingPathComponent("readme.txt"),
+                 atomically: true, encoding: .utf8)
+    try "".write(to: resourcesDir.appendingPathComponent("Zebra.icns"),
+                 atomically: true, encoding: .utf8)
+    try "".write(to: resourcesDir.appendingPathComponent("AppIcon.icns"),
+                 atomically: true, encoding: .utf8)
+
+    let info: [String: Any] = ["CFBundleName": "Test"]
+    let result = resolveSenderIconFile(appURL: tmp, info: info)
+    XCTAssertEqual(result, "AppIcon.icns")
+  }
+
   /// Verifies superseded detection when file generation differs from own generation.
   func test_U049_isSupersededReturnsTrueWhenGenerationsDiffer() {
     XCTAssertTrue(isSuperseded(ownGeneration: "gen_old", fileGeneration: "gen_new"))

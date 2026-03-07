@@ -800,4 +800,9 @@ else
   fail "U053" "notify.sh did not export CLAUDE_NOTIFY_GENERATION to binary"
 fi
 
+case_start "U054" "notify.sh defines launch_notify helper function"
+assert_file_contains "U054" "$SCRIPT" 'launch_notify()' \
+  "notify.sh defines launch_notify function" \
+  "notify.sh missing launch_notify function"
+
 finish

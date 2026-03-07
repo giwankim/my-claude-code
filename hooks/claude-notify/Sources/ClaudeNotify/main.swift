@@ -169,8 +169,7 @@ func readPidFileRaw() -> String? {
 
 /// Reads and validates a PID value from the runtime PID file.
 func readPidFromFile() -> pid_t? {
-  guard let text = readPidFileRaw() else { return nil }
-  return parsePidFileContent(text)?.pid
+  readPidFileContentFromFile()?.pid
 }
 
 /// Reads the full PID file content including generation token.

@@ -305,6 +305,23 @@ resolve_tmux_client_host_bundle_id() {
   return 1
 }
 
+launch_notify() {
+  set -- \
+    -title "Claude Code" \
+    "$@" \
+    -message "$MESSAGE" \
+    -sound default \
+    -group "claude-code" \
+    -timeout "$NOTIFY_TIMEOUT" \
+    -sender-mode "$SENDER_MODE" \
+    -sender-bundle-id "$SENDER_BUNDLE_ID"
+  if [ -n "$SENDER_APP_PATH" ]; then
+    set -- "$@" -sender-app-path "$SENDER_APP_PATH"
+  fi
+  CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
+    CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
+}
+
 # Read message from $1 (manual) or stdin JSON (Claude Code hook)
 if [ -n "$1" ]; then
   MESSAGE="$1"
@@ -451,14 +468,13 @@ EOF
         fi
         log_debug "tmux activation source=${ACTIVATE_SOURCE:-<empty>} client_pid=${CLIENT_PID:-<empty>} resolved app path=${TMUX_RESOLVED_APP_PATH:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>} fallback_policy=$TMUX_ACTIVATE_FALLBACK"
 
-        set -- -title "Claude Code"
+        LAUNCH_EXTRA=""
         if [ -n "$SESSION" ] && [ -n "$WINDOW_INDEX" ] && [ -n "$WINDOW_NAME" ]; then
-          set -- "$@" -subtitle "$SESSION:$WINDOW_INDEX.$WINDOW_NAME"
+          LAUNCH_SUBTITLE="$SESSION:$WINDOW_INDEX.$WINDOW_NAME"
+        else
+          LAUNCH_SUBTITLE=""
         fi
-        set -- "$@" \
-          -message "$MESSAGE" \
-          -sound default \
-          -group "claude-code"
+        LAUNCH_EXECUTE=""
         if [ -n "$PANE_TARGET_ID" ] && [ -n "$SOCKET" ] && [ -x "$TMUX_REDIRECT_SCRIPT" ]; then
           if [ -n "$SESSION" ] && [ -n "$WINDOW_INDEX" ] && [ -n "$PANE_INDEX" ]; then
             PANE_TARGET_INDEX="$SESSION:$WINDOW_INDEX.$PANE_INDEX"
@@ -466,57 +482,32 @@ EOF
             PANE_TARGET_INDEX="$PANE_TARGET_ID"
           fi
 
-          EXECUTE_CMD="$(shell_quote "$TMUX_REDIRECT_SCRIPT") $(shell_quote "$TMUX_BIN") $(shell_quote "$SOCKET") $(shell_quote "$PANE_TARGET_ID") $(shell_quote "$PANE_TARGET_INDEX") $(shell_quote "$CLIENT_NAME") $(shell_quote "$CLIENT_TTY") $(shell_quote "${ACTIVATE_BUNDLE_ID:-}") $(shell_quote "${TMUX_REDIRECT_LOG:-}") $(shell_quote "${ACTIVATE_SOURCE:-}")"
+          LAUNCH_EXECUTE="$(shell_quote "$TMUX_REDIRECT_SCRIPT") $(shell_quote "$TMUX_BIN") $(shell_quote "$SOCKET") $(shell_quote "$PANE_TARGET_ID") $(shell_quote "$PANE_TARGET_INDEX") $(shell_quote "$CLIENT_NAME") $(shell_quote "$CLIENT_TTY") $(shell_quote "${ACTIVATE_BUNDLE_ID:-}") $(shell_quote "${TMUX_REDIRECT_LOG:-}") $(shell_quote "${ACTIVATE_SOURCE:-}")"
           log_debug "execute payload prepared socket=$SOCKET pane_id=$PANE_TARGET_ID pane_index=$PANE_TARGET_INDEX client_name=${CLIENT_NAME:-<empty>} client_tty=${CLIENT_TTY:-<empty>} client_pid=${CLIENT_PID:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>} activation_source=${ACTIVATE_SOURCE:-<empty>}"
-          set -- "$@" -execute "$EXECUTE_CMD"
         else
           printf '%s\n' "Warning: tmux redirect helper unavailable or tmux context incomplete; sending notification without execute action" >&2
           log_debug "tmux execute omitted: helper unavailable or incomplete context socket=${SOCKET:-<empty>} pane=${PANE_TARGET_ID:-<empty>}"
         fi
-        set -- "$@" \
-          -timeout "$NOTIFY_TIMEOUT" \
-          -sender-mode "$SENDER_MODE" \
-          -sender-bundle-id "$SENDER_BUNDLE_ID"
-        if [ -n "$SENDER_APP_PATH" ]; then
-          set -- "$@" -sender-app-path "$SENDER_APP_PATH"
+        if [ -n "$LAUNCH_SUBTITLE" ] && [ -n "$LAUNCH_EXECUTE" ]; then
+          launch_notify -subtitle "$LAUNCH_SUBTITLE" -execute "$LAUNCH_EXECUTE"
+        elif [ -n "$LAUNCH_SUBTITLE" ]; then
+          launch_notify -subtitle "$LAUNCH_SUBTITLE"
+        elif [ -n "$LAUNCH_EXECUTE" ]; then
+          launch_notify -execute "$LAUNCH_EXECUTE"
+        else
+          launch_notify
         fi
-        CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-          CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
         ;;
       *)
         printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
         log_debug "tmux execute omitted: unable to parse tmux info"
-        set -- \
-          -title "Claude Code" \
-          -message "$MESSAGE" \
-          -sound default \
-          -group "claude-code" \
-          -timeout "$NOTIFY_TIMEOUT" \
-          -sender-mode "$SENDER_MODE" \
-          -sender-bundle-id "$SENDER_BUNDLE_ID"
-        if [ -n "$SENDER_APP_PATH" ]; then
-          set -- "$@" -sender-app-path "$SENDER_APP_PATH"
-        fi
-        CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-          CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
+        launch_notify
         ;;
     esac
   else
     printf '%s\n' "Warning: unable to read tmux context; sending notification without execute action" >&2
     log_debug "tmux execute omitted: tmux info empty"
-    set -- \
-      -title "Claude Code" \
-      -message "$MESSAGE" \
-      -sound default \
-      -group "claude-code" \
-      -timeout "$NOTIFY_TIMEOUT" \
-      -sender-mode "$SENDER_MODE" \
-      -sender-bundle-id "$SENDER_BUNDLE_ID"
-    if [ -n "$SENDER_APP_PATH" ]; then
-      set -- "$@" -sender-app-path "$SENDER_APP_PATH"
-    fi
-    CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-      CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
+    launch_notify
   fi
 else
   if [ -z "$ACTIVATE_BUNDLE_ID" ]; then
@@ -526,20 +517,9 @@ else
   ACTIVATE_OVERRIDE="${NOTIFY_ACTIVATE_OVERRIDE-$ACTIVATE_BUNDLE_ID}"
   log_debug "notify_run activate_override=${ACTIVATE_OVERRIDE:-<empty>} activate_bundle=${ACTIVATE_BUNDLE_ID:-<empty>}"
   log_debug "running outside tmux; execute action omitted"
-  set -- \
-    -title "Claude Code" \
-    -message "$MESSAGE" \
-    -sound default \
-    -group "claude-code" \
-    -timeout "$NOTIFY_TIMEOUT" \
-    -sender-mode "$SENDER_MODE" \
-    -sender-bundle-id "$SENDER_BUNDLE_ID"
   if [ -n "$ACTIVATE_OVERRIDE" ]; then
-    set -- "$@" -activate "$ACTIVATE_OVERRIDE"
+    launch_notify -activate "$ACTIVATE_OVERRIDE"
+  else
+    launch_notify
   fi
-  if [ -n "$SENDER_APP_PATH" ]; then
-    set -- "$@" -sender-app-path "$SENDER_APP_PATH"
-  fi
-  CLAUDE_NOTIFY_ISOLATE_HELPER_BUNDLE_ID="$NOTIFY_ISOLATE_HELPER_BUNDLE_ID" \
-    CLAUDE_NOTIFY_ALLOW_NONISOLATED_RETRY="$NOTIFY_ALLOW_NONISOLATED_RETRY" "$NOTIFY" "$@" &
 fi
