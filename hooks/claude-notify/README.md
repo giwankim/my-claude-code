@@ -86,6 +86,7 @@ This script accepts:
 - `NOTIFY_TMUX_REDIRECT_LOG`: override tmux-redirect helper debug log path (defaults to `NOTIFY_DEBUG_LOG` when set).
 - `NOTIFY_ISOLATE_HELPER_BUNDLE_ID`: helper isolation toggle (default `1`).
 - `NOTIFY_ALLOW_NONISOLATED_RETRY`: fallback behavior toggle (default `0`).
+- `NOTIFY_PS_BIN`: override `ps` binary path used for tmux client host resolution (default `ps`).
 - `NOTIFY_OSASCRIPT_BIN`: override `osascript` path for delivery fallback when `UNUserNotificationCenter` is unavailable.
 - `CLAUDE_NOTIFY_GENERATION`: unique generation token for supersession detection across spoof relaunches. Default: `$$_$(date +%s)` (PID + underscore + epoch seconds, e.g. `12345_1709000001`). Exported at runtime and propagated to the Swift binary via the `-generation` CLI flag on spoof and fallback relaunches. The binary writes this token into the PID file; internal relaunches check it and exit early if a newer generation has taken over. Override in tests or operator scripts to control supersession behavior.
 
