@@ -34,8 +34,8 @@ make check-cases-e2e
 - `Tests/required-cases.txt` is the source of truth for required IDs.
 - Enforced by `make check-cases-*`.
 - Active ranges:
-  - Unit: `U001-U039`
+  - Unit: `U001-U056`
   - Integration (Swift): `I001-I005`
-  - Integration (shell): `I101-I134`
+  - Integration (shell): `I101-I140`
   - E2E (shell): `E001-E013`
 - Keep `I006-I100` reserved.
