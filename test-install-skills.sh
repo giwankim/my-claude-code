@@ -37,16 +37,13 @@ for skill_dir in "$REPO_DIR"/skills/*/; do
   echo "OK: $skill -> $target"
 done
 
-# Check that at least one skill was found (sanity check).
-skill_count=$(find "$REPO_DIR/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-if [[ "$skill_count" -eq 0 ]]; then
+# Check that install-skills overwrites an existing real directory with a symlink.
+skill_dirs=("$REPO_DIR"/skills/*/)
+if [[ ${#skill_dirs[@]} -eq 0 || ! -d "${skill_dirs[0]}" ]]; then
   echo "FAIL: no skill directories found in skills/"
   failures=$((failures + 1))
-fi
-
-# Check that install-skills overwrites an existing real directory with a symlink.
-if [[ "$skill_count" -gt 0 ]]; then
-  first_skill="$(basename "$(find "$REPO_DIR/skills" -mindepth 1 -maxdepth 1 -type d | head -1)")"
+else
+  first_skill="$(basename "${skill_dirs[0]}")"
   rm -f "$TEST_AGENTS_DIR/$first_skill"
   mkdir -p "$TEST_AGENTS_DIR/$first_skill/nested"
   make -C "$REPO_DIR" install-skills AGENTS_SKILLS_DIR="$TEST_AGENTS_DIR" 2>&1

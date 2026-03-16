@@ -13,7 +13,6 @@ hooks/claude-notify/
 ├── README.md
 ├── notify.sh
 ├── tmux-redirect.sh
-├── test-claude-notify.sh
 ├── Sources/
 │   ├── ClaudeNotify/main.swift
 │   └── NotifyCore/NotifyCore.swift

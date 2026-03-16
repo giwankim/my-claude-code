@@ -11,7 +11,6 @@ if command -v rg >/dev/null 2>&1; then
     "$PROJECT_DIR/Makefile" \
     "$PROJECT_DIR/README.md" \
     "$PROJECT_DIR/AGENTS.md" \
-    "$PROJECT_DIR/test-claude-notify.sh" \
     "$PROJECT_DIR/Tests/shell" \
     "$PROJECT_DIR/scripts" | grep -v '/scripts/check-shell-path-casing.sh:' || true)
 else
@@ -19,7 +18,6 @@ else
     "$PROJECT_DIR/Makefile" \
     "$PROJECT_DIR/README.md" \
     "$PROJECT_DIR/AGENTS.md" \
-    "$PROJECT_DIR/test-claude-notify.sh" \
     "$PROJECT_DIR/Tests/shell" \
     "$PROJECT_DIR/scripts" | grep -v 'scripts/check-shell-path-casing.sh' || true)
 fi
