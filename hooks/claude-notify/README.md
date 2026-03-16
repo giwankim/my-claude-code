@@ -14,7 +14,6 @@
 - `Tests/`: Swift unit/integration tests, required case manifest, and shell unit/integration/e2e suites.
 - `scripts/`: required check scripts used by `make` targets.
 - `notify.sh`: canonical hook script entrypoint.
-- `test-claude-notify.sh`: module-local shell test runner.
 - `claude-notify.app/`: app bundle containing the built binary (`Contents/MacOS/claude-notify`).
 
 ## Prerequisites
