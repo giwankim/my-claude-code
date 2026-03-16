@@ -36,7 +36,9 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) extension
 
 ```bash
 make build          # Build all components
+make clean          # Remove build artifacts
 make test           # Run all tests (unit + integration + e2e)
+make test-fast      # Unit + integration (skip e2e)
 make test-unit      # Swift + shell unit tests with docstring/case-ID/shell-path gates
 make test-integration  # Swift integration tests
 make test-e2e       # Shell end-to-end tests
@@ -56,8 +58,8 @@ make diff           # compare installed hooks vs source
 ## Development
 
 - CI runs on `macos-latest` via [GitHub Actions](.github/workflows/tests.yml) — unit, integration, and e2e jobs with Swift build caching
-- Quality gates: docstring coverage (`≥80%`), required test case IDs
-- Component docs: [claude-notify README](hooks/claude-notify/README.md), [clippings-to-inbox SKILL.md](skills/clippings-to-inbox/SKILL.md)
+- Quality gates: docstring coverage (`≥80%`), required test case IDs, shell-path casing
+- Component docs: [claude-notify README](hooks/claude-notify/README.md), [commit-push SKILL.md](skills/commit-push/SKILL.md), [clippings-to-inbox SKILL.md](skills/clippings-to-inbox/SKILL.md)
 
 ## License
 
