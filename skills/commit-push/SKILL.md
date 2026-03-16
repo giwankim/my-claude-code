@@ -19,6 +19,6 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    - Match the style of recent commits in the repo.
    - Always pass the message via a HEREDOC.
 4. Run `git add` and `git commit` (create a NEW commit, never amend).
-5. If a pre-commit hook fails, fix the issue (e.g., `./gradlew spotlessApply`), re-stage, and create a NEW commit.
+5. If a pre-commit hook fails, run the appropriate fixer (e.g., formatter, linter), re-stage, and create a NEW commit.
 6. Push to origin on the current branch: `git push`.
 7. Report the commit SHA.

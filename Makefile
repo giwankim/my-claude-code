@@ -25,9 +25,10 @@ install-hooks:
 		"$(CLAUDE_NOTIFY_DIR)/" "$(INSTALL_HOOK_DIR)/"
 
 install-skills:
-	@mkdir -p $(AGENTS_SKILLS_DIR)
+	@mkdir -p "$(AGENTS_SKILLS_DIR)"
 	@for skill in $(SKILLS); do \
-		ln -sfn $(CURDIR)/$(SKILLS_DIR)/$$skill $(AGENTS_SKILLS_DIR)/$$skill; \
+		rm -rf "$(AGENTS_SKILLS_DIR)/$$skill"; \
+		ln -sfn "$(CURDIR)/$(SKILLS_DIR)/$$skill" "$(AGENTS_SKILLS_DIR)/$$skill"; \
 	done
 
 diff:
