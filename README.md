@@ -13,6 +13,10 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) extension
 
 ### Skills
 
+- **[commit-push](skills/commit-push/SKILL.md)** — Commit and push with Angular-style messages
+  - Stages relevant files, drafts an Angular-style `type(scope): subject` commit message, and pushes
+  - Handles pre-commit hook failures with automatic fix-and-retry
+
 - **[clippings-to-inbox](skills/clippings-to-inbox/SKILL.md)** — Move web clippings to inbox with kebab-case filenames
   - Converts Obsidian `Clippings/*.md` filenames to kebab-case with Unicode-aware normalization
   - Optionally generates and inserts summary callouts before moving
@@ -40,18 +44,14 @@ make test-e2e       # Shell end-to-end tests
 
 ### Install
 
-**Hooks** — copy into the Claude hooks directory:
-
 ```bash
-make install        # rsync to ~/.claude/hooks/claude-notify/
-make diff           # compare installed vs source
+make install        # install hooks + skills
+make install-hooks  # rsync hooks to ~/.claude/hooks/claude-notify/
+make install-skills # symlink skills to ~/.agents/skills/
+make diff           # compare installed hooks vs source
 ```
 
-**Skills** — symlink the skill directory into your Obsidian vault:
-
-```bash
-ln -s /path/to/my-claude-code/skills/clippings-to-inbox /path/to/vault/.agents/skills/clippings-to-inbox
-```
+`make install-skills` auto-discovers all directories under `skills/` and creates symlinks in `~/.agents/skills/`.
 
 ## Development
 
