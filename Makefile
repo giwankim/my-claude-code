@@ -27,7 +27,8 @@ install-hooks:
 
 install-skills:
 	@mkdir -p "$(AGENTS_SKILLS_DIR)"
-	@for skill in $(SKILLS); do \
+	@set -e; \
+	for skill in $(SKILLS); do \
 		rm -rf "$(AGENTS_SKILLS_DIR)/$$skill"; \
 		ln -sfn "$(CURDIR)/$(SKILLS_DIR)/$$skill" "$(AGENTS_SKILLS_DIR)/$$skill"; \
 	done
