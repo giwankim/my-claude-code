@@ -45,15 +45,17 @@ if [[ "$skill_count" -eq 0 ]]; then
 fi
 
 # Check that install-skills overwrites an existing real directory with a symlink.
-first_skill="$(basename "$(find "$REPO_DIR/skills" -mindepth 1 -maxdepth 1 -type d | head -1)")"
-rm -f "$TEST_AGENTS_DIR/$first_skill"
-mkdir -p "$TEST_AGENTS_DIR/$first_skill/nested"
-make -C "$REPO_DIR" install-skills AGENTS_SKILLS_DIR="$TEST_AGENTS_DIR" 2>&1
-if [[ -L "$TEST_AGENTS_DIR/$first_skill" ]]; then
-  echo "OK: real directory replaced with symlink ($first_skill)"
-else
-  echo "FAIL: $TEST_AGENTS_DIR/$first_skill was not replaced with a symlink"
-  failures=$((failures + 1))
+if [[ "$skill_count" -gt 0 ]]; then
+  first_skill="$(basename "$(find "$REPO_DIR/skills" -mindepth 1 -maxdepth 1 -type d | head -1)")"
+  rm -f "$TEST_AGENTS_DIR/$first_skill"
+  mkdir -p "$TEST_AGENTS_DIR/$first_skill/nested"
+  make -C "$REPO_DIR" install-skills AGENTS_SKILLS_DIR="$TEST_AGENTS_DIR" 2>&1
+  if [[ -L "$TEST_AGENTS_DIR/$first_skill" ]]; then
+    echo "OK: real directory replaced with symlink ($first_skill)"
+  else
+    echo "FAIL: $TEST_AGENTS_DIR/$first_skill was not replaced with a symlink"
+    failures=$((failures + 1))
+  fi
 fi
 
 # Check idempotency: running install-skills again should succeed.
