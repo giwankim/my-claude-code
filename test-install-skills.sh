@@ -14,35 +14,35 @@ make -C "$REPO_DIR" install-skills AGENTS_SKILLS_DIR="$TEST_AGENTS_DIR"
 
 # Collect expected skills from the skills/ directory.
 failures=0
-for skill_dir in "$REPO_DIR"/skills/*/; do
-  skill="$(basename "$skill_dir")"
-  link="$TEST_AGENTS_DIR/$skill"
-
-  # Check symlink exists.
-  if [[ ! -L "$link" ]]; then
-    echo "FAIL: $link is not a symlink"
-    failures=$((failures + 1))
-    continue
-  fi
-
-  # Check symlink target points to the repo skill directory.
-  target="$(readlink "$link")"
-  expected="$REPO_DIR/skills/$skill"
-  if [[ "$target" != "$expected" ]]; then
-    echo "FAIL: $link -> $target (expected $expected)"
-    failures=$((failures + 1))
-    continue
-  fi
-
-  echo "OK: $skill -> $target"
-done
-
-# Check that install-skills overwrites an existing real directory with a symlink.
 skill_dirs=("$REPO_DIR"/skills/*/)
 if [[ ${#skill_dirs[@]} -eq 0 || ! -d "${skill_dirs[0]}" ]]; then
   echo "FAIL: no skill directories found in skills/"
   failures=$((failures + 1))
 else
+  for skill_dir in "${skill_dirs[@]}"; do
+    skill="$(basename "$skill_dir")"
+    link="$TEST_AGENTS_DIR/$skill"
+
+    # Check symlink exists.
+    if [[ ! -L "$link" ]]; then
+      echo "FAIL: $link is not a symlink"
+      failures=$((failures + 1))
+      continue
+    fi
+
+    # Check symlink target points to the repo skill directory.
+    target="$(readlink "$link")"
+    expected="$REPO_DIR/skills/$skill"
+    if [[ "$target" != "$expected" ]]; then
+      echo "FAIL: $link -> $target (expected $expected)"
+      failures=$((failures + 1))
+      continue
+    fi
+
+    echo "OK: $skill -> $target"
+  done
+
+  # Check that install-skills overwrites an existing real directory with a symlink.
   first_skill="$(basename "${skill_dirs[0]}")"
   rm -f "$TEST_AGENTS_DIR/$first_skill"
   mkdir -p "$TEST_AGENTS_DIR/$first_skill/nested"
