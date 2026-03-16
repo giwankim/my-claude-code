@@ -20,6 +20,7 @@ all: build
 install: install-hooks install-skills
 
 install-hooks:
+	@mkdir -p "$(INSTALL_HOOK_DIR)"
 	rsync -a --delete \
 		--exclude='.build/' \
 		"$(CLAUDE_NOTIFY_DIR)/" "$(INSTALL_HOOK_DIR)/"
