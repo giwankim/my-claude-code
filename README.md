@@ -15,6 +15,7 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) extension
 
 - **[commit-push](skills/commit-push/SKILL.md)** — Commit and push with Angular-style messages
   - Stages relevant files, drafts an Angular-style `type(scope): subject` commit message, and pushes
+  - Interactive file selection with `--select` / `-i`: numbered list of changed/untracked files to pick from
   - Handles pre-commit hook failures with automatic fix-and-retry
 
 - **[clippings-to-inbox](skills/clippings-to-inbox/SKILL.md)** — Move web clippings to inbox with kebab-case filenames
