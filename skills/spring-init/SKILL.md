@@ -16,9 +16,14 @@ via the `spring` CLI.
 
 ## Prerequisites
 
-Verify the `spring` CLI is available by running `command -v spring`.
-If missing, tell the user: "Spring CLI not found. Install via `sdk install springboot`."
-and stop.
+1. Verify the `spring` CLI is available by running `command -v spring`.
+   If missing, tell the user: "Spring CLI not found. Install via `sdk install springboot`."
+   and stop.
+2. Fetch the live dependency catalog by running `spring init --list`. Parse the
+   output table to extract dependency IDs, descriptions, and version constraints
+   (the "Required version" column). Keep this data for use in Steps 5–6.
+   If the command fails (network error), fall back to the static catalog in
+   `references/dependencies.md`.
 
 ## Interactive Configuration
 
@@ -135,12 +140,14 @@ Options: "Continue (delete and regenerate)", "Change artifact name", "Cancel"
 
 ### Step 5 — Dependency groups
 
-Present numbered dependency groups. Read the full catalog from
+Present numbered dependency groups. Read the group structure from
 `references/dependencies.md` in this skill's directory.
 
-Note: some dependencies are only compatible with specific Spring Boot versions
-(e.g., gRPC support requires 4.x). If an incompatible combination is chosen,
-the post-generation check will catch the failure and re-prompt.
+Cross-reference each group's dependencies against the live catalog fetched in
+Prerequisites. For the selected Boot version, hide dependencies whose version
+constraint excludes it. If a dependency from `dependencies.md` doesn't appear
+in the live catalog, omit it (removed upstream). If the live fetch failed,
+show all dependencies with a note that some may be version-specific.
 
 Ask via `AskUserQuestion`:
 
@@ -169,7 +176,8 @@ Behavior:
 ### Step 6 — Pick dependencies within each group
 
 For each group selected in Step 5, present the dependencies from that group using
-`AskUserQuestion`. Read the dependency names and IDs from `references/dependencies.md`.
+`AskUserQuestion`. Use the description from the live catalog when available
+(fresher than the static reference). Read group membership from `references/dependencies.md`.
 
 Format each group as a numbered list showing the ID in parentheses:
 
