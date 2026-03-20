@@ -9,9 +9,10 @@ hooks/.claude/
 .build/
 hooks/claude-notify/.build/
 
-# Installed skills and lock file
+# Skill install targets (see `make install-skills`)
 .agents/skills/
 .claude/skills/
+.codex/skills/
 skills-lock.json
 
 # Build artifacts
