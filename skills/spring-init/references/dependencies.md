@@ -332,6 +332,7 @@ Use the **ID** values with the `spring init -d` flag.
 | spring-ai-elevenlabs | ElevenLabs | Text-to-speech |
 | spring-ai-mcp-server | MCP Server | Model Context Protocol server |
 | spring-ai-mcp-client | MCP Client | Model Context Protocol client |
+| mcp-security | MCP Security [Experimental] | Security for MCP server/client and OAuth2 Authorization Server |
 | spring-ai-stabilityai | Stability AI | Text-to-image generation |
 | timefold-solver | Timefold Solver | Operations and scheduling optimization |
 

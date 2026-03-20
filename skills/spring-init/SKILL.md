@@ -16,13 +16,9 @@ via the `spring` CLI.
 
 ## Prerequisites
 
-1. Verify the `spring` CLI is available by running `command -v spring`.
-   If missing, tell the user: "Spring CLI not found. Install via `sdk install springboot`."
-   and stop.
-2. Check the target directory. If the current directory contains `build.gradle.kts`,
-   `build.gradle`, `pom.xml`, or a `src/` directory, warn the user via `AskUserQuestion`
-   that existing project files were detected and ask whether to continue, choose a
-   different directory, or cancel.
+Verify the `spring` CLI is available by running `command -v spring`.
+If missing, tell the user: "Spring CLI not found. Install via `sdk install springboot`."
+and stop.
 
 ## Interactive Configuration
 
@@ -81,7 +77,7 @@ Select Spring Boot version:
 Options (stable versions first):
 1. 4.0.4 *(latest stable)*
 2. 3.5.12 *(latest 3.x stable)*
-3. 4.1.0-M2 *(milestone)*
+3. 4.1.0-M3 *(milestone)*
 4. 4.0.5-SNAPSHOT
 5. 4.1.0-SNAPSHOT
 
@@ -116,6 +112,27 @@ Options:
 If the user selects "Change multiple" or types free-form text, parse key=value pairs
 like `group=com.example, artifact=myapp, java=17`.
 
+### Step 4b — Check for existing project in target directory
+
+After the artifact name is determined, check if `./<artifact>` already exists and
+contains `build.gradle.kts`, `build.gradle`, `pom.xml`, or a `src/` directory.
+
+If existing project files are found, ask via `AskUserQuestion`:
+
+```
+Existing project files detected in ./<artifact>:
+  - build.gradle.kts
+  - src/
+
+Continue, choose a different artifact name, or cancel?
+```
+
+Options: "Continue (overwrite with --force)", "Change artifact name", "Cancel"
+
+- **Continue** → remember to pass `--force` to `spring init` in Step 7.
+- **Change artifact name** → re-prompt for a new artifact name and re-check.
+- **Cancel** → stop.
+
 ### Step 5 — Dependency groups
 
 Present numbered dependency groups. Read the full catalog from
@@ -131,8 +148,8 @@ Select dependency groups to browse (or type dependency IDs directly, e.g. web,da
   3. Template Engines    10. Observability         17. Spring Cloud Messaging
   4. Security            11. Testing              18. VMware Tanzu
   5. SQL                 12. Spring Cloud          19. AI
-  6. NoSQL               13. Spring Cloud Config
-  7. Messaging           14. Spring Cloud Discovery
+  6. NoSQL               13. Spring Cloud Config   20. Microsoft Azure
+  7. Messaging           14. Spring Cloud Discovery 21. Google Cloud
 
 Type group numbers (e.g. 2,5,8), dependency IDs, or 'none':
 ```
@@ -167,7 +184,7 @@ Parse comma-separated numbers and dash ranges (e.g. `1-3,5`). Collect all select
 dependency IDs across all groups.
 
 For the **AI** group, which is very large, sub-categorize by presenting sub-groups
-first (LLM Providers, Vector Databases, Chat Memory, Document Readers, Other), then
+first (LLM Providers, Embeddings, Vector Databases, Chat Memory, Document Readers, Other), then
 drill into selected sub-groups.
 
 ### Step 7 — Confirmation
