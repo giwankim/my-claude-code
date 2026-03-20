@@ -24,5 +24,5 @@ for skill in "$REPO_DIR"/skills/*/; do
 done
 
 [[ $skill_count -gt 0 ]] || { echo "FAIL: no skills found in skills/"; exit 1; }
-(( fail )) && exit 1
+if (( fail )); then exit 1; fi
 echo "OK: symlink chain verified ($skill_count skills)"

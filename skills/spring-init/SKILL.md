@@ -29,7 +29,7 @@ Show defaults clearly so the user can accept them quickly.
 
 Ask via `AskUserQuestion`:
 
-```
+```text
 Spring Boot project setup.
 
 Defaults: Gradle-Kotlin | Kotlin | Boot 4.0.4 | Java 25 | JAR
@@ -46,7 +46,7 @@ Options: "Use defaults", "Customize settings"
 
 Ask via `AskUserQuestion`:
 
-```
+```text
 Select build tool and language:
 ```
 
@@ -70,7 +70,7 @@ Map the selection to CLI flags:
 
 Ask via `AskUserQuestion`:
 
-```
+```text
 Select Spring Boot version:
 ```
 
@@ -90,7 +90,7 @@ current folder name (`basename "$(pwd)"`).
 
 Ask via `AskUserQuestion`:
 
-```
+```text
 Project coordinates:
 
   Group:     com.giwankim
@@ -119,7 +119,7 @@ contains `build.gradle.kts`, `build.gradle`, `pom.xml`, or a `src/` directory.
 
 If existing project files are found, ask via `AskUserQuestion`:
 
-```
+```text
 Existing project files detected in ./<artifact>:
   - build.gradle.kts
   - src/
@@ -144,7 +144,7 @@ the post-generation check will catch the failure and re-prompt.
 
 Ask via `AskUserQuestion`:
 
-```
+```text
 Select dependency groups to browse (or type dependency IDs directly, e.g. web,data-jpa):
 
   1. Developer Tools      8. I/O                  15. Spring Cloud Routing
@@ -173,7 +173,7 @@ For each group selected in Step 5, present the dependencies from that group usin
 
 Format each group as a numbered list showing the ID in parentheses:
 
-```
+```text
 Select Web dependencies:
 
   1. Spring Web (web)
@@ -197,7 +197,7 @@ Show the full configuration summary and the exact `spring init` command.
 
 Ask via `AskUserQuestion`:
 
-```
+```text
 Ready to generate project:
 
   Build:        Gradle - Kotlin
