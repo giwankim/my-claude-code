@@ -18,7 +18,7 @@ for skill in "$REPO_DIR"/skills/*/; do
   ((++skill_count))
   s="$(basename "$skill")"
   [[ -d "$AGENTS/$s" && ! -L "$AGENTS/$s" ]] || { echo "FAIL: $AGENTS/$s not a real dir"; fail=1; }
-  expected="$(realpath "$AGENTS/$s")"
+  expected="$(cd "$AGENTS/$s" && pwd -P)"
   [[ "$(readlink "$CLAUDE/$s")" == "$expected" ]] || { echo "FAIL: claude/$s wrong target"; fail=1; }
   [[ "$(readlink "$CODEX/$s")" == "$expected" ]] || { echo "FAIL: codex/$s wrong target"; fail=1; }
 done
