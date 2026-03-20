@@ -14,6 +14,8 @@ INSTALL_HOOK_DIR := $(HOME)/.claude/hooks/claude-notify
 SKILLS_DIR := skills
 SKILLS := $(notdir $(patsubst %/,%,$(wildcard $(SKILLS_DIR)/*/)))
 AGENTS_SKILLS_DIR := $(HOME)/.agents/skills
+CLAUDE_SKILLS_DIR := $(HOME)/.claude/skills
+CODEX_SKILLS_DIR  := $(HOME)/.codex/skills
 
 all: build
 
@@ -26,11 +28,15 @@ install-hooks:
 		"$(CLAUDE_NOTIFY_DIR)/" "$(INSTALL_HOOK_DIR)/"
 
 install-skills:
-	@mkdir -p "$(AGENTS_SKILLS_DIR)"
+	@mkdir -p "$(AGENTS_SKILLS_DIR)" "$(CLAUDE_SKILLS_DIR)" "$(CODEX_SKILLS_DIR)"
 	@set -e; \
 	for skill in $(SKILLS); do \
 		rm -rf "$(AGENTS_SKILLS_DIR)/$$skill"; \
-		ln -sfn "$(CURDIR)/$(SKILLS_DIR)/$$skill" "$(AGENTS_SKILLS_DIR)/$$skill"; \
+		cp -R "$(CURDIR)/$(SKILLS_DIR)/$$skill" "$(AGENTS_SKILLS_DIR)/$$skill"; \
+		rm -rf "$(CLAUDE_SKILLS_DIR)/$$skill"; \
+		ln -sfn "$(AGENTS_SKILLS_DIR)/$$skill" "$(CLAUDE_SKILLS_DIR)/$$skill"; \
+		rm -rf "$(CODEX_SKILLS_DIR)/$$skill"; \
+		ln -sfn "$(AGENTS_SKILLS_DIR)/$$skill" "$(CODEX_SKILLS_DIR)/$$skill"; \
 	done
 
 diff:

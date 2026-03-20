@@ -9,6 +9,11 @@ hooks/.claude/
 .build/
 hooks/claude-notify/.build/
 
+# Installed skills and lock file
+.agents/skills/
+.claude/skills/
+skills-lock.json
+
 # Build artifacts
 hooks/claude-notify/claude-notify.app/Contents/MacOS/
 hooks/claude-notify/claude-notify.app/Contents/_CodeSignature/
