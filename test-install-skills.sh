@@ -13,12 +13,16 @@ make -C "$REPO_DIR" install-skills \
   AGENTS_SKILLS_DIR="$AGENTS" CLAUDE_SKILLS_DIR="$CLAUDE" CODEX_SKILLS_DIR="$CODEX"
 
 fail=0
+skill_count=0
 for skill in "$REPO_DIR"/skills/*/; do
+  ((skill_count++))
   s="$(basename "$skill")"
   [[ -d "$AGENTS/$s" && ! -L "$AGENTS/$s" ]] || { echo "FAIL: $AGENTS/$s not a real dir"; fail=1; }
-  [[ "$(readlink "$CLAUDE/$s")" == "$AGENTS/$s" ]] || { echo "FAIL: claude/$s wrong target"; fail=1; }
-  [[ "$(readlink "$CODEX/$s")" == "$AGENTS/$s" ]] || { echo "FAIL: codex/$s wrong target"; fail=1; }
+  expected="$(realpath "$AGENTS/$s")"
+  [[ "$(readlink "$CLAUDE/$s")" == "$expected" ]] || { echo "FAIL: claude/$s wrong target"; fail=1; }
+  [[ "$(readlink "$CODEX/$s")" == "$expected" ]] || { echo "FAIL: codex/$s wrong target"; fail=1; }
 done
 
+[[ $skill_count -gt 0 ]] || { echo "FAIL: no skills found in skills/"; exit 1; }
 (( fail )) && exit 1
-echo "OK: symlink chain verified"
+echo "OK: symlink chain verified ($skill_count skills)"

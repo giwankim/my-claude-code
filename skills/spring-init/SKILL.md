@@ -127,9 +127,9 @@ Existing project files detected in ./<artifact>:
 Continue, choose a different artifact name, or cancel?
 ```
 
-Options: "Continue (overwrite with --force)", "Change artifact name", "Cancel"
+Options: "Continue (delete and regenerate)", "Change artifact name", "Cancel"
 
-- **Continue** → remember to pass `--force` to `spring init` in Step 7.
+- **Continue** → run `rm -rf ./<artifact>` first, then generate fresh (no `--force` needed).
 - **Change artifact name** → re-prompt for a new artifact name and re-check.
 - **Cancel** → stop.
 
@@ -137,6 +137,10 @@ Options: "Continue (overwrite with --force)", "Change artifact name", "Cancel"
 
 Present numbered dependency groups. Read the full catalog from
 `references/dependencies.md` in this skill's directory.
+
+Note: some dependencies are only compatible with specific Spring Boot versions
+(e.g., gRPC support requires 4.x). If an incompatible combination is chosen,
+the post-generation check will catch the failure and re-prompt.
 
 Ask via `AskUserQuestion`:
 
@@ -246,12 +250,17 @@ Important notes:
 
 ## Post-Generation
 
-After successful execution:
+After executing the `spring init` command:
 
-1. List the generated project structure: `find <target> -type f | head -30`.
-2. If Gradle-based, verify `./gradlew` exists and is executable in the target directory.
-3. Report success with a summary of what was created.
-4. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
+1. **Verify the target directory exists.** If `./<artifact>` was not created,
+   the command silently failed (`spring init` exits 0 even on server-side errors).
+   Capture the full command output, tell the user the generation failed, suggest
+   the most likely cause (dependency incompatible with the chosen Boot version),
+   and offer to re-select dependencies or Boot version.
+2. List the generated project structure: `find <target> -type f | head -30`.
+3. If Gradle-based, verify `./gradlew` exists and is executable in the target directory.
+4. Report success with a summary of what was created.
+5. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
    `cd <artifact> && ./mvnw spring-boot:run` (Maven).
 
 ## Edge Cases
@@ -259,7 +268,7 @@ After successful execution:
 - **Spring CLI not found**: Check `command -v spring`. If missing, suggest
   `sdk install springboot` and stop.
 - **Existing project files in target**: Warn before proceeding. If user confirms,
-  pass `--force` to `spring init`.
+  delete the target directory and regenerate fresh.
 - **Network failure**: `spring init` calls `start.spring.io`. On failure, suggest
   checking internet connectivity.
 - **Invalid dependency IDs**: If `spring init` fails with an invalid dependency error,

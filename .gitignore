@@ -11,7 +11,6 @@ hooks/claude-notify/.build/
 
 # Skill install targets (see `make install-skills`)
 .agents/skills/
-.claude/skills/
 .codex/skills/
 skills-lock.json
 
