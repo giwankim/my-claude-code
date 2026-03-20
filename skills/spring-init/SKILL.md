@@ -117,6 +117,13 @@ Options:
 If the user selects "Change multiple" or types free-form text, parse key=value pairs
 like `group=com.example, artifact=myapp, java=17`.
 
+Before using the artifact name in any filesystem operation, validate it:
+- Must match `^[A-Za-z0-9._-]+$` (alphanumeric, dots, underscores, dashes only)
+- Must not be empty, `.`, or `..`
+- Must not contain `/` or `\`
+
+If invalid, re-prompt the user for a corrected artifact name.
+
 ### Step 4b — Check for existing project in target directory
 
 After the artifact name is determined, check if `./<artifact>` already exists and
@@ -134,7 +141,7 @@ Continue, choose a different artifact name, or cancel?
 
 Options: "Continue (delete and regenerate)", "Change artifact name", "Cancel"
 
-- **Continue** → run `rm -rf ./<artifact>` first, then generate fresh (no `--force` needed).
+- **Continue** → run `rm -rf -- "./<artifact>"` first, then generate fresh (no `--force` needed).
 - **Change artifact name** → re-prompt for a new artifact name and re-check.
 - **Cancel** → stop.
 
