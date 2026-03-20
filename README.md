@@ -18,6 +18,11 @@ Personal [Claude Code](https://docs.anthropic.com/en/docs/claude-code) extension
   - Interactive file selection with `--select` / `-i`: numbered list of changed/untracked files to pick from
   - Handles pre-commit hook failures with automatic fix-and-retry
 
+- **[spring-init](skills/spring-init/SKILL.md)** — Initialize Spring Boot projects via Spring Initializr
+  - Interactive configuration with sensible defaults (Gradle-Kotlin, Kotlin, Java 25)
+  - Dependency selection by category from the full Spring Initializr catalog
+  - Uses the `spring` CLI (sdkman) for project generation
+
 - **[clippings-to-inbox](skills/clippings-to-inbox/SKILL.md)** — Move web clippings to inbox with kebab-case filenames
   - Converts Obsidian `Clippings/*.md` filenames to kebab-case with Unicode-aware normalization
   - Optionally generates and inserts summary callouts before moving
@@ -50,17 +55,17 @@ make test-e2e       # Shell end-to-end tests
 ```bash
 make install        # install hooks + skills
 make install-hooks  # rsync hooks to ~/.claude/hooks/claude-notify/
-make install-skills # symlink skills to ~/.agents/skills/
+make install-skills # copy skills to ~/.agents/skills/, symlink from ~/.claude and ~/.codex
 make diff           # compare installed hooks vs source
 ```
 
-`make install-skills` auto-discovers all directories under `skills/` and creates symlinks in `~/.agents/skills/`.
+`make install-skills` auto-discovers all directories under `skills/`, copies them to `~/.agents/skills/`, and creates symlinks in `~/.claude/skills/` and `~/.codex/skills/`. The copy in `~/.agents/skills/` is standalone — the source repo can be relocated without breaking installed skills.
 
 ## Development
 
 - CI runs on `macos-latest` via [GitHub Actions](.github/workflows/tests.yml) — unit, integration, and e2e jobs with Swift build caching
 - Quality gates: docstring coverage (`≥80%`), required test case IDs, shell-path casing
-- Component docs: [claude-notify README](hooks/claude-notify/README.md), [commit-push SKILL.md](skills/commit-push/SKILL.md), [clippings-to-inbox SKILL.md](skills/clippings-to-inbox/SKILL.md)
+- Component docs: [claude-notify README](hooks/claude-notify/README.md), [commit-push SKILL.md](skills/commit-push/SKILL.md), [spring-init SKILL.md](skills/spring-init/SKILL.md), [clippings-to-inbox SKILL.md](skills/clippings-to-inbox/SKILL.md)
 
 ## License
 
