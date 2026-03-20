@@ -1,6 +1,10 @@
 # Spring Initializr Dependencies
 
-Complete dependency catalog from start.spring.io, organized by category.
+Group structure reference for organizing dependencies by category.
+The live catalog is fetched at runtime via `spring init --list` for up-to-date
+IDs, descriptions, and version compatibility. This file provides the grouping
+that the CLI output lacks.
+
 Use the **ID** values with the `spring init -d` flag.
 
 ## 1. Developer Tools
