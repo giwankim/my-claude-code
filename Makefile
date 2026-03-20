@@ -34,7 +34,9 @@ install-skills:
 		rm -rf "$(AGENTS_SKILLS_DIR)/$$skill"; \
 		cp -R "$(CURDIR)/$(SKILLS_DIR)/$$skill" "$(AGENTS_SKILLS_DIR)/$$skill"; \
 		resolved=$$(realpath "$(AGENTS_SKILLS_DIR)/$$skill"); \
+		rm -rf "$(CLAUDE_SKILLS_DIR)/$$skill"; \
 		ln -sfn "$$resolved" "$(CLAUDE_SKILLS_DIR)/$$skill"; \
+		rm -rf "$(CODEX_SKILLS_DIR)/$$skill"; \
 		ln -sfn "$$resolved" "$(CODEX_SKILLS_DIR)/$$skill"; \
 	done
 

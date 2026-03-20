@@ -15,7 +15,7 @@ make -C "$REPO_DIR" install-skills \
 fail=0
 skill_count=0
 for skill in "$REPO_DIR"/skills/*/; do
-  ((skill_count++))
+  ((++skill_count))
   s="$(basename "$skill")"
   [[ -d "$AGENTS/$s" && ! -L "$AGENTS/$s" ]] || { echo "FAIL: $AGENTS/$s not a real dir"; fail=1; }
   expected="$(realpath "$AGENTS/$s")"
