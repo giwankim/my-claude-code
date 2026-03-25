@@ -37,7 +37,7 @@ Ask via `AskUserQuestion`:
 ```text
 Spring Boot project setup.
 
-Defaults: Gradle-Kotlin | Kotlin | Boot 4.0.4 | Java 25 | JAR
+Defaults: Gradle-Kotlin | Kotlin | Boot 4.0.4 | Java 25 | JAR | YAML config
 
 Accept all defaults or customize?
 ```
@@ -145,6 +145,59 @@ Options: "Continue (delete and regenerate)", "Change artifact name", "Cancel"
 - **Change artifact name** → re-prompt for a new artifact name and re-check.
 - **Cancel** → stop.
 
+### Step 4c — Project layout
+
+Always check this, even on the defaults path (defaults use Gradle-Kotlin, so
+the subproject option applies whenever a Gradle root is present).
+
+Check whether the generated project uses Gradle (type starts with `gradle-`).
+Then check the current directory for an existing Gradle root by looking for
+`settings.gradle.kts` or `settings.gradle` in `.` (the working directory, not
+`./<artifact>`).
+
+**If the generated project uses Gradle AND a Gradle root is detected**, ask via
+`AskUserQuestion`:
+
+```text
+Existing Gradle root project detected (<settings-file>).
+
+Create as:
+```
+
+Options: "Standalone project in ./<artifact>", "Subproject of root"
+
+- **Standalone** → current behavior, generate into `./<artifact>` as a complete project.
+- **Subproject** → generate into `./<artifact>`, then clean up and register as a
+  Gradle module (see Post-Generation).
+
+**Otherwise**, default to standalone and skip this question.
+
+> **Note:** Maven subprojects are not supported. Maven multi-module requires the
+> root POM to use `<packaging>pom</packaging>` (aggregator), which is incompatible
+> with a runnable Boot application. Initializr-generated modules also inherit from
+> `spring-boot-starter-parent`, and Maven allows only one `<parent>`, making
+> automatic wiring infeasible without restructuring the root project.
+
+### Step 4d — Config file format
+
+Always ask this, even on the defaults path.
+
+Ask via `AskUserQuestion`:
+
+```text
+Application config format:
+
+  Default: YAML (application.yaml)
+
+Keep YAML or switch to Properties?
+```
+
+Options: "YAML (default)", "Properties"
+
+- **YAML** → after generation, convert `application.properties` content to YAML syntax
+  and write `application.yaml`, then remove the original `.properties` file (see Post-Generation).
+- **Properties** → keep the generated file as-is.
+
 ### Step 5 — Dependency groups
 
 Present numbered dependency groups. Read the group structure from
@@ -222,6 +275,8 @@ Ready to generate project:
   Artifact:     <artifact>
   Java:         25
   Packaging:    JAR
+  Layout:       Standalone | Subproject of root
+  Config:       YAML (application.yaml)
   Dependencies: web, data-jpa, postgresql
   Target:       ./<artifact>
 
@@ -272,11 +327,38 @@ After executing the `spring init` command:
    Capture the full command output, tell the user the generation failed, suggest
    the most likely cause (dependency incompatible with the chosen Boot version),
    and offer to re-select dependencies or Boot version.
-2. List the generated project structure: `find <target> -type f | head -30`.
-3. If Gradle-based, verify `./gradlew` exists and is executable in the target directory.
-4. Report success with a summary of what was created.
-5. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
-   `cd <artifact> && ./mvnw spring-boot:run` (Maven).
+2. **If subproject layout was chosen** (Gradle only), clean up and register the module:
+   - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
+     `settings.gradle.kts` (or `settings.gradle`), and `HELP.md`.
+   - Append `include("<artifact>")` to the root `settings.gradle.kts` (or
+     `settings.gradle`), unless it already contains that include.
+
+3. **Convert config format if YAML was chosen.** For each `application.properties`
+   file in `./<artifact>/src/main/resources/` and `./<artifact>/src/test/resources/`
+   (if the file exists):
+   - Read the file contents.
+   - Parse `.properties` lines correctly: treat `=` or `:` as key-value separators,
+     skip blank lines and comment lines (starting with `#` or `!`), and handle
+     backslash line continuations if present.
+   - Split parsed keys on `.` to produce nested YAML with 2-space indentation.
+     Merge keys that share a common prefix. Quote values that YAML would
+     misinterpret as non-string types (e.g. `true`, `false`, `yes`, `no`, `on`,
+     `off`, `null`, or bare numbers) by wrapping them in single quotes.
+     For example, `spring.application.name=demo` becomes:
+     ```yaml
+     spring:
+       application:
+         name: demo
+     ```
+   - Write the converted content to `application.yaml` in the same directory.
+   - Delete the original `application.properties`.
+4. List the generated project structure: `find <target> -type f | head -30`.
+5. If Gradle-based and standalone layout, verify `./gradlew` exists and is executable
+   in the target directory.
+6. Report success with a summary of what was created.
+7. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
+   `cd <artifact> && ./mvnw spring-boot:run` (Maven). For subproject layout,
+   suggest running from the root instead (e.g. `./gradlew :<artifact>:bootRun`).
 
 ## Edge Cases
 
