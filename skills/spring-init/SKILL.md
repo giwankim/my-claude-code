@@ -147,6 +147,9 @@ Options: "Continue (delete and regenerate)", "Change artifact name", "Cancel"
 
 ### Step 4c — Project layout
 
+Always check this, even on the defaults path (defaults use Gradle-Kotlin, so
+the subproject option applies whenever a Gradle root is present).
+
 Check whether the generated project uses Gradle (type starts with `gradle-`).
 Then check the current directory for an existing Gradle root by looking for
 `settings.gradle.kts` or `settings.gradle` in `.` (the working directory, not
@@ -191,7 +194,8 @@ Keep YAML or switch to Properties?
 
 Options: "YAML (default)", "Properties"
 
-- **YAML** → after generation, rename `application.properties` to `application.yaml`.
+- **YAML** → after generation, convert `application.properties` content to YAML syntax
+  and write `application.yaml`, then remove the original `.properties` file (see Post-Generation).
 - **Properties** → keep the generated file as-is.
 
 ### Step 5 — Dependency groups
@@ -330,12 +334,17 @@ After executing the `spring init` command:
      `settings.gradle`), unless it already contains that include.
 
 3. **Convert config format if YAML was chosen.** For each `application.properties`
-   file in `src/main/resources/` and `src/test/resources/` (if the file exists):
+   file in `./<artifact>/src/main/resources/` and `./<artifact>/src/test/resources/`
+   (if the file exists):
    - Read the file contents.
-   - Convert properties syntax to YAML: for each non-blank, non-comment line,
-     split on the first `=` to get `key` and `value`, then split the key on `.`
-     to produce nested YAML with 2-space indentation. Merge keys that share a
-     common prefix. For example, `spring.application.name=demo` becomes:
+   - Parse `.properties` lines correctly: treat `=` or `:` as key-value separators,
+     skip blank lines and comment lines (starting with `#` or `!`), and handle
+     backslash line continuations if present.
+   - Split parsed keys on `.` to produce nested YAML with 2-space indentation.
+     Merge keys that share a common prefix. Quote values that YAML would
+     misinterpret as non-string types (e.g. `true`, `false`, `yes`, `no`, `on`,
+     `off`, `null`, or bare numbers) by wrapping them in single quotes.
+     For example, `spring.application.name=demo` becomes:
      ```yaml
      spring:
        application:
