@@ -1,6 +1,6 @@
 ---
 name: spring-init
-version: 0.1.0
+version: 0.2.0
 description: >-
   Initialize a new Spring Boot project using Spring Initializr via the spring CLI.
   Use when the user says "new spring project", "spring init", "create spring boot app",
