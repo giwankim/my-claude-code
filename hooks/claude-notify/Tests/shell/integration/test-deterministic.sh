@@ -549,11 +549,7 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I123" "notify.sh explicit activate probe exited $rc"
 fi
-_i=0
-while [ "$_i" -lt 20 ] && ! awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.googlecode.iterm2$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; do
-  sleep 0.1
-  _i=$((_i + 1))
-done
+wait_for_file_contains "$ARGS_LOG" '\]=com.googlecode.iterm2$' 50 >/dev/null 2>&1 || true
 if awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.googlecode.iterm2$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; then
   pass "I123" "notify.sh forwards explicit activate bundle id"
 else
@@ -577,11 +573,7 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I124" "notify.sh activate inference probe exited $rc"
 fi
-_i=0
-while [ "$_i" -lt 20 ] && ! awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.jetbrains.intellij$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; do
-  sleep 0.1
-  _i=$((_i + 1))
-done
+wait_for_file_contains "$ARGS_LOG" '\]=com.jetbrains.intellij$' 50 >/dev/null 2>&1 || true
 if awk '/\]=-activate$/{ if (getline nextline > 0 && nextline ~ /\]=com.jetbrains.intellij$/) found=1 } END{exit found?0:1}' "$ARGS_LOG" 2>/dev/null; then
   pass "I124" "notify.sh forwards inferred activate bundle id outside tmux"
 else
@@ -894,7 +886,7 @@ write_fake_notify "$FAKE_NOTIFY"
 cat > "$FAKE_TMUX" <<'CASE_I130_TMUX'
 #!/bin/sh
 if [ "$1" = "display-message" ]; then
-  sleep 2
+  sleep 30
   printf '%s\n' "sess|1|win|1|%1|client-slow|/dev/ttys001"
   exit 0
 fi
@@ -913,10 +905,14 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I130" "notify.sh tmux-timeout probe exited $rc"
 fi
-if [ "$elapsed_ms" -le 1900 ]; then
+# I130 timing ceiling accounts for Perl startup, fork/exec overhead, SIGTERM + waitpid,
+# and the rest of notify.sh execution. CI runners have shown peaks above 2100ms,
+# so we use a 35x ceiling (3500ms) for stability. The fake sleep is 30s, so a
+# broken timeout that lets the sleep complete would far exceed this ceiling.
+if [ "$elapsed_ms" -le 3500 ]; then
   pass "I130" "notify.sh tmux-timeout probe exits quickly"
 else
-  fail "I130" "notify.sh tmux-timeout probe took ${elapsed_ms}ms (expected <=1900ms)"
+  fail "I130" "notify.sh tmux-timeout probe took ${elapsed_ms}ms (expected <=3500ms)"
 fi
 if echo "$err" | grep -q "unable to read tmux context"; then
   pass "I130" "notify.sh tmux-timeout probe emits fail-open warning"
@@ -937,7 +933,7 @@ ARGS_LOG="$TMP_DIR/notify-args.log"
 write_fake_notify "$FAKE_NOTIFY"
 cat > "$FAKE_ACTIVATE_OSASCRIPT" <<'CASE_I131_OSASCRIPT'
 #!/bin/sh
-sleep 2
+sleep 30
 printf '%s\n' "com.jetbrains.intellij"
 exit 0
 CASE_I131_OSASCRIPT
@@ -956,10 +952,11 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "I131" "notify.sh activate-timeout probe exited $rc"
 fi
-if [ "$elapsed_ms" -le 1900 ]; then
+# I131 timing ceiling: same rationale as I130 above (fake sleep is 30s).
+if [ "$elapsed_ms" -le 3500 ]; then
   pass "I131" "notify.sh activate-timeout probe exits quickly"
 else
-  fail "I131" "notify.sh activate-timeout probe took ${elapsed_ms}ms (expected <=1900ms)"
+  fail "I131" "notify.sh activate-timeout probe took ${elapsed_ms}ms (expected <=3500ms)"
 fi
 if grep -q -- '\]=-activate$' "$ARGS_LOG"; then
   fail "I131" "notify.sh activate-timeout probe unexpectedly forwarded -activate"

@@ -196,6 +196,9 @@ fi
 assert_file_contains "U022" "$ARGS_LOG" "explicit stop message" \
   "notify.sh explicit-message probe forwards argument payload" \
   "notify.sh explicit-message probe missing argument payload"
+if ! grep -q -- "explicit stop message" "$ARGS_LOG" 2>/dev/null; then
+  printf 'U022 diagnostic: ARGS_LOG content: %s\n' "$(cat "$ARGS_LOG" 2>/dev/null || echo '<missing>')" >&2
+fi
 
 case_start "U023" "notify.sh invalid stdin JSON falls back without blocking"
 TMP_DIR=$(make_case_tmp_dir "U023")
@@ -319,7 +322,7 @@ write_fake_notify "$FAKE_NOTIFY"
 cat > "$FAKE_TMUX" <<'FAKE_TMUX_U029'
 #!/bin/sh
 if [ "$1" = "display-message" ]; then
-  sleep 2
+  sleep 30
   printf '%s\n' "sess|1|win|1|%1|client-slow|/dev/ttys001"
   exit 0
 fi
@@ -339,11 +342,13 @@ assert_rc_eq "U029" "$rc" 0 \
   "notify.sh tmux timeout capture probe exited $rc"
 # U029 is intentionally load-sensitive: with NOTIFY_TMUX_CMD_TIMEOUT_MS=100,
 # elapsed_ms can overshoot under CI contention due to process-group kill + waitpid.
-# This runner has shown flakes above 4x, so we use a 6x ceiling for stability.
-if [ "$elapsed_ms" -le 600 ]; then
+# I130/I131 (same pattern) have shown CI peaks above 2100ms, so we use a 15x
+# ceiling for stability. The fake sleep is 30s, so a broken timeout that lets the
+# sleep complete would far exceed this ceiling.
+if [ "$elapsed_ms" -le 1500 ]; then
   pass "U029" "notify.sh tmux timeout capture probe exits quickly"
 else
-  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=600ms)"
+  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=1500ms)"
 fi
 if echo "$err" | grep -q "unable to read tmux context"; then
   pass "U029" "notify.sh tmux timeout capture probe emits fail-open warning"
