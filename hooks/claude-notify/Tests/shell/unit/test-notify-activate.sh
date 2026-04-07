@@ -342,13 +342,13 @@ assert_rc_eq "U029" "$rc" 0 \
   "notify.sh tmux timeout capture probe exited $rc"
 # U029 is intentionally load-sensitive: with NOTIFY_TMUX_CMD_TIMEOUT_MS=100,
 # elapsed_ms can overshoot under CI contention due to process-group kill + waitpid.
-# I130/I131 (same pattern) have shown CI peaks above 2100ms, so we use a 15x
+# I130/I131 (same pattern) have shown CI peaks above 2100ms, so we use a 35x
 # ceiling for stability. The fake sleep is 30s, so a broken timeout that lets the
 # sleep complete would far exceed this ceiling.
-if [ "$elapsed_ms" -le 1500 ]; then
+if [ "$elapsed_ms" -le 3500 ]; then
   pass "U029" "notify.sh tmux timeout capture probe exits quickly"
 else
-  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=1500ms)"
+  fail "U029" "notify.sh tmux timeout capture probe took ${elapsed_ms}ms (expected <=3500ms)"
 fi
 if echo "$err" | grep -q "unable to read tmux context"; then
   pass "U029" "notify.sh tmux timeout capture probe emits fail-open warning"
