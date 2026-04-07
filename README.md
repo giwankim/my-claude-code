@@ -61,6 +61,17 @@ make diff           # compare installed hooks vs source
 
 `make install-skills` auto-discovers all directories under `skills/`, copies them to `~/.agents/skills/`, and creates symlinks in `~/.claude/skills/` and `~/.codex/skills/`. The copy in `~/.agents/skills/` is standalone — the source repo can be relocated without breaking installed skills.
 
+### Uninstall
+
+```bash
+make uninstall              # uninstall hooks + skills
+make uninstall-hooks        # remove hooks from settings.json + installed files
+make uninstall-hook-Stop    # remove a specific hook event only
+make uninstall-skills       # remove installed skills from all locations
+```
+
+`make uninstall-hooks` removes claude-notify entries from `~/.claude/settings.json` and deletes `~/.claude/hooks/claude-notify/`. A timestamped backup of `settings.json` is created before modification. See [claude-notify README](hooks/claude-notify/README.md#uninstall) for dry-run and per-event options.
+
 ## Development
 
 - CI runs on `macos-latest` via [GitHub Actions](.github/workflows/tests.yml) — unit, integration, and e2e jobs with Swift build caching
