@@ -19,8 +19,12 @@ make_case_tmp_dir() {
 }
 
 cleanup_registered_tmp_dirs() {
-  for dir in $TEST_TMP_DIRS; do
-    rm -rf "$dir"
+  # NOTE: register_tmp_dir runs inside command substitution (subshell) when
+  # called via TMP_DIR=$(make_case_tmp_dir ...), so TEST_TMP_DIRS is empty
+  # in the parent. Clean up by glob pattern using the PID-tagged naming
+  # convention instead.
+  for dir in /tmp/claude-notify-test-*.$$; do
+    [ -d "$dir" ] && rm -rf "$dir"
   done
 }
 
