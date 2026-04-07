@@ -65,6 +65,29 @@ This script accepts:
 - First argument as message text, or
 - JSON on stdin with non-empty `.message`, then non-empty `.last_assistant_message`, else default `"Waiting for input"`.
 
+## Uninstall
+
+Remove all claude-notify hooks and installed files:
+
+```bash
+make uninstall
+```
+
+Remove a specific hook event only (e.g., `Notification` or `Stop`):
+
+```bash
+make uninstall-hook-Notification
+make uninstall-hook-Stop
+```
+
+Preview what would be removed without making changes:
+
+```bash
+./scripts/uninstall-hooks.sh --dry-run --settings ~/.claude/settings.json
+```
+
+The uninstall script creates a timestamped backup of `settings.json` before modifying it.
+
 ## Environment variables (`notify.sh`)
 
 - `NOTIFY_BIN`: override binary path.

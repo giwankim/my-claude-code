@@ -2,9 +2,13 @@
 
 .PHONY: build test test-fast test-unit test-integration test-e2e \
 	check-cases-unit check-cases-integration check-cases-e2e check-docstrings check-shell-path-casing \
+	uninstall uninstall-hooks \
 	all clean
 
 all: build
+
+SETTINGS_FILE ?= $(HOME)/.claude/settings.json
+INSTALL_DIR ?= $(HOME)/.claude/hooks/claude-notify
 
 DEVELOPER_DIR ?= $(if $(wildcard /Applications/Xcode.app/Contents/Developer),/Applications/Xcode.app/Contents/Developer,$(shell xcode-select -p))
 
@@ -64,3 +68,13 @@ test-e2e: build check-cases-e2e
 test-fast: test-unit test-integration
 
 test: test-fast test-e2e
+
+uninstall: uninstall-hooks
+
+uninstall-hooks:
+	./scripts/uninstall-hooks.sh --all --remove-files \
+		--settings "$(SETTINGS_FILE)" --install-dir "$(INSTALL_DIR)"
+
+uninstall-hook-%:
+	./scripts/uninstall-hooks.sh --hook "$*" \
+		--settings "$(SETTINGS_FILE)" --install-dir "$(INSTALL_DIR)"
