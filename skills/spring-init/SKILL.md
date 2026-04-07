@@ -1,6 +1,6 @@
 ---
 name: spring-init
-version: 0.2.0
+version: 0.3.0
 description: >-
   Initialize a new Spring Boot project using Spring Initializr via the spring CLI.
   Use when the user says "new spring project", "spring init", "create spring boot app",
@@ -16,14 +16,100 @@ via the `spring` CLI.
 
 ## Prerequisites
 
-1. Verify the `spring` CLI is available by running `command -v spring`.
-   If missing, tell the user: "Spring CLI not found. Install via `sdk install springboot`."
-   and stop.
-2. Fetch the live dependency catalog by running `spring init --list`. Parse the
-   output table to extract dependency IDs, descriptions, and version constraints
-   (the "Required version" column). Keep this data for use in Steps 5–6.
-   If the command fails (network error), fall back to the static catalog in
-   `references/dependencies.md`.
+### 1. Verify the Spring CLI
+
+Run `command -v spring`.
+
+- **If missing**, tell the user:
+  "Spring CLI not found. Install via `sdk install springboot`." and stop.
+- **If present**, continue. The CLI version should generally match the target
+  Boot version. If generation fails later due to a stale CLI, suggest upgrading:
+  `sdk install springboot <version>` (e.g. `sdk install springboot {LATEST_STABLE_BOOT}`).
+
+### 2. Fetch live metadata from the Spring Initializr API
+
+Run:
+```bash
+curl -s -H 'Accept: application/json' https://start.spring.io
+```
+
+Parse the JSON response and extract these data structures for use in all
+subsequent steps:
+
+| Key | JSON path | Description |
+|-----|-----------|-------------|
+| `BOOT_VERSIONS` | `bootVersion.values[]` | Array of `{id, name}` |
+| `JAVA_VERSIONS` | `javaVersion.values[]` | Array of `{id, name}`, ordered highest-first |
+| `TYPES` | `type.values[]` | Project types; filter to `tags.format == "project"` only |
+| `LANGUAGES` | `language.values[]` | Array of `{id, name}` |
+| `DEP_GROUPS` | `dependencies.values[]` | Groups, each with `name` and nested `values[]` of `{id, name, description, versionRange}` |
+
+**Derived values:**
+
+Each boot version has two representations — the `name` (human-readable, for
+prompts) and the `id` (API identifier, for the `spring init -b` flag). These
+can differ significantly: e.g. `name="4.1.0 (M4)"` vs `id="4.1.0.M4"`, or
+`name="4.0.5"` vs `id="4.0.5.RELEASE"`. Always track both. Show the `name`
+to the user; pass the `id` to `spring init -b`.
+
+- **`LATEST_STABLE_BOOT`** — The first entry in `BOOT_VERSIONS` whose `name`
+  contains no parenthetical qualifier (no "SNAPSHOT", "M", "RC"). Store both:
+  - `display`: the `name` field (e.g. `"4.0.5"`)
+  - `id`: the `id` field (e.g. `"4.0.5.RELEASE"`)
+- **`LATEST_3X_STABLE`** — Same logic, but the first stable version whose `name`
+  starts with `3.` (if any still exist in the list). Store both `display` and `id`.
+- **`JAVA_HIGHEST`** — The first entry in `JAVA_VERSIONS` (already ordered
+  highest-first by the API), e.g. `"26"`.
+
+**Categorize boot versions** for Step 3:
+- **Stable**: `name` has no parenthetical qualifier
+- **Milestone/RC**: `name` contains `(M...)` or `(RC...)`
+- **Snapshot**: `name` contains `(SNAPSHOT)`
+
+**Version range parsing** for filtering dependencies in Steps 5–6:
+
+Dependencies may have a `versionRange` field using Maven range notation, e.g.
+`[3.5.0.RELEASE,4.2.0.M1)` or just `4.0.0.RELEASE` (meaning ≥ that version).
+
+- `[` = inclusive lower bound, `(` = exclusive lower bound
+- `]` = inclusive upper bound, `)` = exclusive upper bound
+- A bare version means "this version and above"
+- Compare version parts numerically; qualifier order: `RELEASE` > `RC` > `M` > `BUILD-SNAPSHOT`
+- Empty or absent `versionRange` means compatible with all Boot versions
+
+A dependency is compatible with the selected Boot version if the Boot version
+falls within its range.
+
+### 3. Fallback — tiered degradation
+
+The JSON API and `spring init --list` both contact `start.spring.io`, so a
+full network or service outage will break both. Use a tiered fallback:
+
+**Level 2 — `spring init --list`** (if `curl` fails due to a parse error,
+missing `curl` binary, or a transient issue where the CLI may still work):
+
+1. Run `spring init --list` and parse all three output sections:
+   - **Parameters** table → extract `bootVersion` and `javaVersion` defaults
+   - **Project types** table → extract available types and the default (marked `*`)
+   - **Dependencies** table → extract IDs, descriptions, AND the "Required
+     version" column (e.g. `>=3.5.0 and <4.1.0-M1`, `>=4.0.0`). Map these
+     constraints to the same filtering logic described in the version range
+     parsing section above so that Steps 5–6 can still filter incompatible
+     dependencies.
+2. Use `references/dependencies.md` for dependency group structure (the CLI
+   output is a flat list without groups).
+3. In Steps 3 and 4, present only the default boot/java versions and accept
+   free-text input (the CLI does not enumerate available versions).
+4. Note to the user that some options may be limited.
+
+**Level 3 — fully offline** (if both `curl` and `spring init --list` fail):
+
+1. Use `references/dependencies.md` for dependency groups. Show all
+   dependencies without version filtering, with a note that some may be
+   incompatible with the chosen Boot version.
+2. Do not assume any boot version or java version defaults — ask the user to
+   provide them manually.
+3. Tell the user to check their network connection to `start.spring.io`.
 
 ## Interactive Configuration
 
@@ -32,12 +118,21 @@ Show defaults clearly so the user can accept them quickly.
 
 ### Step 1 — Quick start or customize?
 
+Construct the prompt dynamically from the fetched metadata. The defaults line
+must show:
+- Build: `Gradle-Kotlin` (opinionated preference)
+- Language: `Kotlin` (opinionated preference)
+- Boot: `{LATEST_STABLE_BOOT}` (from API)
+- Java: `{JAVA_HIGHEST}` (from API)
+- Packaging: `JAR` (opinionated preference)
+- Config: `YAML` (opinionated preference)
+
 Ask via `AskUserQuestion`:
 
 ```text
 Spring Boot project setup.
 
-Defaults: Gradle-Kotlin | Kotlin | Boot 4.0.4 | Java 25 | JAR | YAML config
+Defaults: Gradle-Kotlin | Kotlin | Boot {LATEST_STABLE_BOOT} | Java {JAVA_HIGHEST} | JAR | YAML config
 
 Accept all defaults or customize?
 ```
@@ -49,19 +144,21 @@ Options: "Use defaults", "Customize settings"
 
 ### Step 2 — Build tool and language (customize only)
 
+Derive the options from the API's `TYPES` (project types with
+`tags.format == "project"`) and `LANGUAGES`.
+
+Generate all sensible pairings from the API data. Mark `Gradle - Kotlin + Kotlin`
+as `*(recommended)*`. Only include combinations where the language is idiomatic
+for the build tool (e.g. Groovy language pairs with Gradle-Groovy, not
+Gradle-Kotlin). Always derive from the live API — do not assume a fixed set.
+
 Ask via `AskUserQuestion`:
 
 ```text
 Select build tool and language:
 ```
 
-Options:
-1. Gradle - Kotlin + Kotlin *(recommended)*
-2. Gradle - Kotlin + Java
-3. Gradle - Groovy + Java
-4. Gradle - Groovy + Groovy
-5. Maven + Java
-6. Maven + Kotlin
+Present the dynamically generated options list.
 
 Map the selection to CLI flags:
 
@@ -73,25 +170,34 @@ Map the selection to CLI flags:
 
 ### Step 3 — Spring Boot version (customize only)
 
+List versions from `BOOT_VERSIONS`, sorted: stable first, then milestones/RCs,
+then snapshots. Annotate the latest stable and latest 3.x stable (if present).
+
 Ask via `AskUserQuestion`:
 
 ```text
 Select Spring Boot version:
 ```
 
-Options (stable versions first):
-1. 4.0.4 *(latest stable)*
-2. 3.5.12 *(latest 3.x stable)*
-3. 4.1.0-M3 *(milestone)*
-4. 4.0.5-SNAPSHOT
-5. 4.1.0-SNAPSHOT
+Options (dynamically numbered from `BOOT_VERSIONS`):
+```
+  1. {stable1} *(latest stable)*
+  2. {stable2} *(latest 3.x stable)*    ← only if a 3.x stable exists
+  3. {milestone1} *(milestone)*
+  4. {snapshot1} *(snapshot)*
+  ...
+```
 
-Default: 4.0.4. The user can also type a custom version.
+Default: `{LATEST_STABLE_BOOT}`. The user can also type a custom version string.
 
 ### Step 4 — Project coordinates
 
 Always ask this, even on the defaults path. Derive the artifact default from the
-current folder name (`basename "$(pwd)"`).
+current folder name (`basename "$(pwd -P)"`).
+
+Use `{JAVA_HIGHEST}` from the API as the Java version default. Show all
+available Java versions from `JAVA_VERSIONS` in the "Change Java version"
+option.
 
 Ask via `AskUserQuestion`:
 
@@ -99,8 +205,8 @@ Ask via `AskUserQuestion`:
 Project coordinates:
 
   Group:     com.giwankim
-  Artifact:  <current-folder-name>
-  Java:      25
+  Artifact:  {current-folder-name}
+  Java:      {JAVA_HIGHEST}
   Packaging: JAR
 
 Accept these or provide new values?
@@ -110,7 +216,7 @@ Options:
 1. Accept defaults
 2. Change group
 3. Change artifact
-4. Change Java version (17, 21, 25)
+4. Change Java version ({JAVA_VERSIONS joined by ", "})
 5. Change packaging (WAR)
 6. Change multiple
 
@@ -200,32 +306,32 @@ Options: "YAML (default)", "Properties"
 
 ### Step 5 — Dependency groups
 
-Present numbered dependency groups. Read the group structure from
-`references/dependencies.md` in this skill's directory.
+Build the dependency group list dynamically from `DEP_GROUPS` (the API's
+`dependencies.values[]` array). Each group has a `name` and nested `values[]`
+of dependencies.
 
-Cross-reference each group's dependencies against the live catalog fetched in
-Prerequisites. For the selected Boot version, hide dependencies whose version
-constraint excludes it. If a dependency from `dependencies.md` doesn't appear
-in the live catalog, omit it (removed upstream). If the live fetch failed,
-show all dependencies with a note that some may be version-specific.
+Before displaying, filter out any groups where all dependencies are incompatible
+with the selected Boot version (check each dependency's `versionRange`).
+
+Number groups sequentially and format in columns (3 columns, left-padded
+numbers) to keep the prompt compact.
 
 Ask via `AskUserQuestion`:
 
 ```text
 Select dependency groups to browse (or type dependency IDs directly, e.g. web,data-jpa):
 
-  1. Developer Tools      8. I/O                  15. Spring Cloud Routing
-  2. Web                  9. Ops                  16. Spring Cloud Circuit Breaker
-  3. Template Engines    10. Observability         17. Spring Cloud Messaging
-  4. Security            11. Testing              18. VMware Tanzu
-  5. SQL                 12. Spring Cloud          19. AI
-  6. NoSQL               13. Spring Cloud Config   20. Microsoft Azure
-  7. Messaging           14. Spring Cloud Discovery 21. Google Cloud
+  1. {group1_name}      {N+1}. {groupN+1_name}      ...
+  2. {group2_name}      {N+2}. {groupN+2_name}      ...
+  ...
 
 Type group numbers (e.g. 2,5,8), dependency IDs, or 'none':
 ```
 
-Options: "none (skip dependencies)", "2,5 (Web + SQL)", "2,4,5 (Web + Security + SQL)"
+For the quick-pick option suggestions, find the group numbers for "Web", "SQL",
+and "Security" from the dynamic list and construct examples accordingly:
+
+Options: "none (skip dependencies)", "{web},{sql} (Web + SQL)", "{web},{security},{sql} (Web + Security + SQL)"
 
 Behavior:
 - If the user types numbers → proceed to Step 6 for each selected group.
@@ -235,18 +341,20 @@ Behavior:
 
 ### Step 6 — Pick dependencies within each group
 
-For each group selected in Step 5, present the dependencies from that group using
-`AskUserQuestion`. Use the description from the live catalog when available
-(fresher than the static reference). Read group membership from `references/dependencies.md`.
+For each group selected in Step 5, present the dependencies from that group's
+`values[]` array in the API response. Use the `name`, `id`, and `description`
+from the API.
+
+For the selected Boot version, filter out dependencies whose `versionRange`
+excludes it.
 
 Format each group as a numbered list showing the ID in parentheses:
 
 ```text
-Select Web dependencies:
+Select {group_name} dependencies:
 
-  1. Spring Web (web)
-  2. Spring Reactive Web (webflux)
-  3. HTTP Client (spring-restclient)
+  1. {dep1_name} ({dep1_id})
+  2. {dep2_name} ({dep2_id})
   ...
 
 Type numbers to include (e.g. 1,3) or 'none':
@@ -255,35 +363,48 @@ Type numbers to include (e.g. 1,3) or 'none':
 Parse comma-separated numbers and dash ranges (e.g. `1-3,5`). Collect all selected
 dependency IDs across all groups.
 
-For the **AI** group, which is very large, sub-categorize by presenting sub-groups
-first (LLM Providers, Embeddings, Vector Databases, Chat Memory, Document Readers, Other), then
-drill into selected sub-groups.
+For the **AI** group, which can contain 50+ dependencies, sub-categorize by
+ID prefix pattern to keep the list navigable:
+- **LLM Providers**: IDs matching `spring-ai-{provider}` that are not vectordb,
+  embedding, chat-memory, document-reader, or mcp
+- **Embeddings**: IDs containing `embedding` or `transformers`
+- **Vector Databases**: IDs containing `vectordb`
+- **Chat Memory**: IDs containing `chat-memory`
+- **Document Readers**: IDs containing `document-reader`
+- **Other**: everything else (mcp, elevenlabs, stabilityai, etc.)
+
+Present sub-groups first, then drill into selected sub-groups. Hide sub-groups
+with zero compatible dependencies.
+
+If the heuristic produces confusing groupings, fall back to
+`references/dependencies.md` for the AI sub-categorization.
 
 ### Step 7 — Confirmation
 
-Show the full configuration summary and the exact `spring init` command.
+Show the full configuration summary using the actual values collected from all
+prior steps, and the exact `spring init` command.
 
 Ask via `AskUserQuestion`:
 
 ```text
 Ready to generate project:
 
-  Build:        Gradle - Kotlin
-  Language:     Kotlin
-  Boot:         4.0.4
-  Group:        com.giwankim
-  Artifact:     <artifact>
-  Java:         25
-  Packaging:    JAR
-  Layout:       Standalone | Subproject of root
-  Config:       YAML (application.yaml)
-  Dependencies: web, data-jpa, postgresql
-  Target:       ./<artifact>
+  Build:        {selected_type_display_name}
+  Language:     {selected_language}
+  Boot:         {selected_boot_version}
+  Group:        {selected_group}
+  Artifact:     {selected_artifact}
+  Java:         {selected_java_version}
+  Packaging:    {selected_packaging}
+  Layout:       {Standalone | Subproject of root}
+  Config:       {YAML (application.yaml) | Properties}
+  Dependencies: {comma-separated dep IDs, or "none"}
+  Target:       ./{selected_artifact}
 
 Command:
-  spring init --type gradle-project-kotlin --language kotlin \
-    -b 4.0.4 -g com.giwankim -a <artifact> -n <artifact> \
-    -j 25 -p jar -d web,data-jpa,postgresql <artifact>
+  spring init --type {type} --language {language} \
+    -b {bootVersion_id} -g {groupId} -a {artifactId} -n {artifactId} \
+    -j {javaVersion} -p {packaging} -d {deps} {artifactId}
 
 Proceed?
 ```
@@ -302,7 +423,7 @@ Build the `spring init` command from the collected configuration:
 spring init \
   --type <type> \
   --language <language> \
-  -b <bootVersion> \
+  -b <bootVersion-id> \
   -g <groupId> \
   -a <artifactId> \
   -n <artifactId> \
@@ -313,6 +434,8 @@ spring init \
 ```
 
 Important notes:
+- Use the boot version's `id` field for `-b` (e.g. `4.0.5.RELEASE`, `4.1.0.M4`),
+  not the display `name`. The API requires the full qualifier.
 - Use `--type` (not `--build`) to distinguish Gradle-Kotlin from Gradle-Groovy.
 - Omit `-d` entirely if no dependencies were selected.
 - Passing a directory name as the target auto-extracts the archive (no `-x` needed).
@@ -326,7 +449,9 @@ After executing the `spring init` command:
    the command silently failed (`spring init` exits 0 even on server-side errors).
    Capture the full command output, tell the user the generation failed, suggest
    the most likely cause (dependency incompatible with the chosen Boot version),
-   and offer to re-select dependencies or Boot version.
+   and offer to re-select dependencies or Boot version. If the failure seems
+   related to a stale Spring CLI, suggest upgrading:
+   `sdk install springboot {LATEST_STABLE_BOOT}`.
 2. **If subproject layout was chosen** (Gradle only), clean up and register the module:
    - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
      `settings.gradle.kts` (or `settings.gradle`), and `HELP.md`.
@@ -364,9 +489,14 @@ After executing the `spring init` command:
 
 - **Spring CLI not found**: Check `command -v spring`. If missing, suggest
   `sdk install springboot` and stop.
+- **Stale Spring CLI**: If generation fails or produces unexpected results,
+  suggest upgrading: `sdk install springboot <version>` where `<version>` is the
+  `{LATEST_STABLE_BOOT}` from the API.
 - **Existing project files in target**: Warn before proceeding. If user confirms,
   delete the target directory and regenerate fresh.
-- **Network failure**: `spring init` calls `start.spring.io`. On failure, suggest
-  checking internet connectivity.
+- **Network failure**: The `curl` to `start.spring.io` or `spring init` itself may
+  fail. Follow the tiered fallback in Prerequisites step 3. If both `curl` and
+  `spring init --list` fail, the service is likely down — use the fully offline
+  path and suggest checking connectivity.
 - **Invalid dependency IDs**: If `spring init` fails with an invalid dependency error,
   show the error message and re-prompt for corrected dependency selection.
