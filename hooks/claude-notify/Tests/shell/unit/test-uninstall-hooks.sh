@@ -610,4 +610,39 @@ fi
 
 # ===========================================================================
 
+case_start "U077" "--remove-files refuses dangerous install-dir values"
+TMP_DIR=$(make_case_tmp_dir "U077")
+write_both_hooks_settings "$TMP_DIR/settings.json"
+for unsafe_dir in "" "/" "."; do
+  "$SCRIPT" --all --remove-files --settings "$TMP_DIR/settings.json" --install-dir "$unsafe_dir" >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    pass "U077" "rejects unsafe install-dir '$unsafe_dir' (exit $rc)"
+  else
+    fail "U077" "accepted unsafe install-dir '$unsafe_dir'"
+  fi
+done
+
+# ===========================================================================
+
+case_start "U078" "--hook rejects event names with special characters"
+TMP_DIR=$(make_case_tmp_dir "U078")
+write_both_hooks_settings "$TMP_DIR/settings.json"
+"$SCRIPT" --hook 'foo"bar' --settings "$TMP_DIR/settings.json" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  pass "U078" "rejects event name with quotes (exit $rc)"
+else
+  fail "U078" "accepted event name with quotes"
+fi
+"$SCRIPT" --hook 'foo bar' --settings "$TMP_DIR/settings.json" >/dev/null 2>&1
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  pass "U078" "rejects event name with spaces (exit $rc)"
+else
+  fail "U078" "accepted event name with spaces"
+fi
+
+# ===========================================================================
+
 finish

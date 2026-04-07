@@ -35,6 +35,12 @@ while [ "$#" -gt 0 ]; do
       REMOVE_FILES=1; shift ;;
     --hook)
       [ "$#" -ge 2 ] || usage
+      case "$2" in
+        ''|*[!A-Za-z0-9_-]*)
+          printf 'Invalid hook event name: %s\n' "$2" >&2
+          exit 1
+          ;;
+      esac
       HOOK_EVENTS="${HOOK_EVENTS:+$HOOK_EVENTS }$2"; shift 2 ;;
     --all)
       ALL_MODE=1; shift ;;
@@ -59,6 +65,12 @@ fi
 
 maybe_remove_install_dir() {
   if [ "$REMOVE_FILES" -eq 1 ] && [ "$ALL_MODE" -eq 1 ]; then
+    case "$INSTALL_DIR" in
+      ""|"/"|".")
+        printf 'Error: refusing to remove unsafe install directory: %s\n' "$INSTALL_DIR" >&2
+        exit 1
+        ;;
+    esac
     if [ "$DRY_RUN" -eq 1 ]; then
       if [ -d "$INSTALL_DIR" ]; then printf 'Dry run: would remove install directory: %s\n' "$INSTALL_DIR"; fi
     elif [ -d "$INSTALL_DIR" ]; then
