@@ -556,4 +556,58 @@ esac
 
 # ===========================================================================
 
+case_start "U075" "--help exits 0"
+"$SCRIPT" --help >/dev/null 2>&1
+rc=$?
+assert_rc_eq "U075" "$rc" 0 \
+  "--help exits 0" \
+  "--help exited $rc instead of 0"
+
+# ===========================================================================
+
+case_start "U076" "hooks without .command field are preserved, not crashed"
+TMP_DIR=$(make_case_tmp_dir "U076")
+cat > "$TMP_DIR/settings.json" <<'SETTINGS_JSON'
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/test/.claude/hooks/claude-notify/notify.sh"
+          },
+          {
+            "type": "http",
+            "url": "http://example.com/webhook"
+          }
+        ]
+      }
+    ]
+  }
+}
+SETTINGS_JSON
+"$SCRIPT" --all --settings "$TMP_DIR/settings.json" >/dev/null 2>&1
+rc=$?
+assert_rc_eq "U076" "$rc" 0 \
+  "uninstall exits 0 with non-command hooks" \
+  "uninstall exited $rc (jq crash on missing .command)"
+# The http hook should survive.
+http_url=$(jq -r '.hooks.Notification[0].hooks[0].url // empty' "$TMP_DIR/settings.json" 2>/dev/null)
+if [ "$http_url" = "http://example.com/webhook" ]; then
+  pass "U076" "non-command hook entry preserved"
+else
+  fail "U076" "non-command hook entry missing (got: $http_url)"
+fi
+# The claude-notify entry should be gone.
+notify_count=$(jq '[.hooks.Notification[0].hooks[] | select((.command // "") | test("claude-notify/notify\\.sh"))] | length' "$TMP_DIR/settings.json" 2>/dev/null)
+if [ "$notify_count" = "0" ]; then
+  pass "U076" "claude-notify entry removed"
+else
+  fail "U076" "claude-notify entry still present ($notify_count remaining)"
+fi
+
+# ===========================================================================
+
 finish

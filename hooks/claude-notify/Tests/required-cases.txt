@@ -76,6 +76,8 @@ U071
 U072
 U073
 U074
+U075
+U076
 
 [integration]
 I001

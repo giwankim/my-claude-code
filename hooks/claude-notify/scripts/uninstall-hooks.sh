@@ -18,7 +18,7 @@ ALL_MODE=0
 
 usage() {
   printf 'Usage: %s [--settings <path>] [--install-dir <path>] [--dry-run] [--hook <event>]... [--all] [--remove-files]\n' "$(basename "$0")"
-  exit 1
+  exit "${1:-1}"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
     --all)
       ALL_MODE=1; shift ;;
     -h|--help)
-      usage ;;
+      usage 0 ;;
     *)
       printf 'Unknown option: %s\n' "$1" >&2; usage ;;
   esac
@@ -103,7 +103,7 @@ if [ "$ALL_MODE" -eq 1 ]; then
     .hooks |= with_entries(
       .value |= [
         .[]
-        | .hooks |= [ .[] | select(.command | test("'"$NOTIFY_PATTERN"'") | not) ]
+        | .hooks |= [ .[] | select(((.command? // "") | tostring | test("'"$NOTIFY_PATTERN"'")) | not) ]
         | select(.hooks | length > 0)
       ]
       | select(.value | length > 0)
@@ -119,7 +119,7 @@ else
   # avoids that class of bug entirely.
   jq_filter="."
   for event_key in $HOOK_EVENTS; do
-    jq_filter="${jq_filter}"' | if .hooks["'"${event_key}"'"] then .hooks["'"${event_key}"'"] |= [.[] | .hooks |= [.[] | select(.command | test("'"${NOTIFY_PATTERN}"'") | not)] | select(.hooks | length > 0)] | if (.hooks["'"${event_key}"'"] | length) == 0 then del(.hooks["'"${event_key}"'"]) else . end else . end'
+    jq_filter="${jq_filter}"' | if .hooks["'"${event_key}"'"] then .hooks["'"${event_key}"'"] |= [.[] | .hooks |= [.[] | select(((.command? // "") | tostring | test("'"${NOTIFY_PATTERN}"'")) | not)] | select(.hooks | length > 0)] | if (.hooks["'"${event_key}"'"] | length) == 0 then del(.hooks["'"${event_key}"'"]) else . end else . end'
   done
   # Clean up empty .hooks object.
   jq_filter="${jq_filter}"' | if (.hooks | length) == 0 then del(.hooks) else . end'
@@ -150,7 +150,7 @@ fi
 if [ "$ALL_MODE" -eq 1 ]; then
   removed_events=$(jq -r '
     .hooks | to_entries[]
-    | select(.value | any(.[].hooks[]; .command | test("'"$NOTIFY_PATTERN"'")))
+    | select(.value | any(.[].hooks[]; ((.command? // "") | tostring | test("'"$NOTIFY_PATTERN"'"))))
     | .key
   ' "$SETTINGS_FILE" | tr '\n' ' ')
 else
