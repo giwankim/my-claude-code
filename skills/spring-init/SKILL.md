@@ -24,7 +24,7 @@ Run `command -v spring`.
   "Spring CLI not found. Install via `sdk install springboot`." and stop.
 - **If present**, continue. The CLI version should generally match the target
   Boot version. If generation fails later due to a stale CLI, suggest upgrading:
-  `sdk install springboot <version>` (e.g. `sdk install springboot {LATEST_STABLE_BOOT}`).
+  `sdk install springboot <version>` (e.g. `sdk install springboot {LATEST_STABLE_BOOT.display}`).
 
 ### 2. Fetch live metadata from the Spring Initializr API
 
@@ -122,7 +122,7 @@ Construct the prompt dynamically from the fetched metadata. The defaults line
 must show:
 - Build: `Gradle-Kotlin` (opinionated preference)
 - Language: `Kotlin` (opinionated preference)
-- Boot: `{LATEST_STABLE_BOOT}` (from API)
+- Boot: `{LATEST_STABLE_BOOT.display}` (from API)
 - Java: `{JAVA_HIGHEST}` (from API)
 - Packaging: `JAR` (opinionated preference)
 - Config: `YAML` (opinionated preference)
@@ -132,7 +132,7 @@ Ask via `AskUserQuestion`:
 ```text
 Spring Boot project setup.
 
-Defaults: Gradle-Kotlin | Kotlin | Boot {LATEST_STABLE_BOOT} | Java {JAVA_HIGHEST} | JAR | YAML config
+Defaults: Gradle-Kotlin | Kotlin | Boot {LATEST_STABLE_BOOT.display} | Java {JAVA_HIGHEST} | JAR | YAML config
 
 Accept all defaults or customize?
 ```
@@ -180,7 +180,7 @@ Select Spring Boot version:
 ```
 
 Options (dynamically numbered from `BOOT_VERSIONS`):
-```
+```text
   1. {stable1} *(latest stable)*
   2. {stable2} *(latest 3.x stable)*    ← only if a 3.x stable exists
   3. {milestone1} *(milestone)*
@@ -188,7 +188,7 @@ Options (dynamically numbered from `BOOT_VERSIONS`):
   ...
 ```
 
-Default: `{LATEST_STABLE_BOOT}`. The user can also type a custom version string.
+Default: `{LATEST_STABLE_BOOT.display}`. The user can also type a custom version string.
 
 ### Step 4 — Project coordinates
 
@@ -366,8 +366,8 @@ dependency IDs across all groups.
 For the **AI** group, which can contain 50+ dependencies, sub-categorize by
 ID prefix pattern to keep the list navigable:
 - **LLM Providers**: IDs matching `spring-ai-{provider}` that are not vectordb,
-  embedding, chat-memory, document-reader, or mcp
-- **Embeddings**: IDs containing `embedding` or `transformers`
+  embedding, chat-memory, document-reader, mcp, elevenlabs, stabilityai, or postgresml
+- **Embeddings**: IDs containing `embedding`, `transformers`, or `postgresml`
 - **Vector Databases**: IDs containing `vectordb`
 - **Chat Memory**: IDs containing `chat-memory`
 - **Document Readers**: IDs containing `document-reader`
@@ -451,7 +451,7 @@ After executing the `spring init` command:
    the most likely cause (dependency incompatible with the chosen Boot version),
    and offer to re-select dependencies or Boot version. If the failure seems
    related to a stale Spring CLI, suggest upgrading:
-   `sdk install springboot {LATEST_STABLE_BOOT}`.
+   `sdk install springboot {LATEST_STABLE_BOOT.display}`.
 2. **If subproject layout was chosen** (Gradle only), clean up and register the module:
    - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
      `settings.gradle.kts` (or `settings.gradle`), and `HELP.md`.
@@ -491,7 +491,7 @@ After executing the `spring init` command:
   `sdk install springboot` and stop.
 - **Stale Spring CLI**: If generation fails or produces unexpected results,
   suggest upgrading: `sdk install springboot <version>` where `<version>` is the
-  `{LATEST_STABLE_BOOT}` from the API.
+  `{LATEST_STABLE_BOOT.display}` from the API.
 - **Existing project files in target**: Warn before proceeding. If user confirms,
   delete the target directory and regenerate fresh.
 - **Network failure**: The `curl` to `start.spring.io` or `spring init` itself may
