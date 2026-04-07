@@ -214,11 +214,7 @@ if [ "$rc" -eq 0 ]; then
 else
   fail "E010" "auto spoofed post failure exited $rc (expected 0)"
 fi
-_i=0
-while [ "$_i" -lt 20 ] && ! grep -q -- '\]=-fallback-run$' "$ORIGIN_ARGS_LOG" 2>/dev/null; do
-  sleep 0.1
-  _i=$((_i + 1))
-done
+wait_for_file_contains "$ORIGIN_ARGS_LOG" '\]=-fallback-run$' 100 >/dev/null 2>&1 || true
 if grep -q -- '\]=-fallback-run$' "$ORIGIN_ARGS_LOG" 2>/dev/null \
   && awk '/\]=-sender-mode$/{ if (getline nextline > 0 && nextline ~ /\]=off$/) found=1 } END{exit found?0:1}' "$ORIGIN_ARGS_LOG"; then
   pass "E010" "auto spoofed post failure launched fallback run without spoof"
