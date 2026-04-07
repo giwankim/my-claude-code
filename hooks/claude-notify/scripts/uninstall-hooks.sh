@@ -173,9 +173,7 @@ fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   printf 'Dry run: would remove claude-notify hooks from event(s): %s\n' "$removed_events"
-  if [ "$REMOVE_FILES" -eq 1 ] && [ "$ALL_MODE" -eq 1 ] && [ -d "$INSTALL_DIR" ]; then
-    printf 'Dry run: would remove install directory: %s\n' "$INSTALL_DIR"
-  fi
+  maybe_remove_install_dir
   exit 0
 fi
 
