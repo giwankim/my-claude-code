@@ -161,11 +161,20 @@ fi
 
 # --- Identify what will be removed (for reporting) -------------------------
 
-removed_events=$(jq -r '
-  .hooks | to_entries[]
-  | select(.value | any(.[].hooks[]; ((.command? // "") | tostring | test("'"$NOTIFY_PATTERN"'"))))
-  | .key
-' "$SETTINGS_FILE" | tr '\n' ' ')
+if [ "$ALL_MODE" -eq 1 ]; then
+  removed_events=$(jq -r '
+    .hooks | to_entries[]
+    | select(.value | any(.[].hooks[]; ((.command? // "") | tostring | test("'"$NOTIFY_PATTERN"'"))))
+    | .key
+  ' "$SETTINGS_FILE" | tr '\n' ' ')
+else
+  removed_events=""
+  for _ev in $HOOK_EVENTS; do
+    if jq -e --arg k "$_ev" '.hooks[$k] // [] | any(.[].hooks[]; ((.command? // "") | tostring | test("'"$NOTIFY_PATTERN"'")))' "$SETTINGS_FILE" >/dev/null 2>&1; then
+      removed_events="${removed_events:+$removed_events }$_ev"
+    fi
+  done
+fi
 
 # --- Dry-run mode -----------------------------------------------------------
 
