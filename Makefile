@@ -1,6 +1,7 @@
 # Root orchestrator Makefile for local hook projects.
 
-.PHONY: install install-hooks install-skills diff build test test-fast test-unit \
+.PHONY: install install-hooks install-skills uninstall uninstall-hooks uninstall-skills \
+	diff build test test-fast test-unit \
 	test-integration test-e2e \
 	check-cases-unit check-cases-integration check-cases-e2e check-docstrings \
 	all clean
@@ -38,6 +39,22 @@ install-skills:
 		ln -sfn "$$resolved" "$(CLAUDE_SKILLS_DIR)/$$skill"; \
 		rm -rf "$(CODEX_SKILLS_DIR)/$$skill"; \
 		ln -sfn "$$resolved" "$(CODEX_SKILLS_DIR)/$$skill"; \
+	done
+
+uninstall: uninstall-hooks uninstall-skills
+
+uninstall-hooks:
+	$(SUB_MAKE) uninstall-hooks INSTALL_DIR="$(INSTALL_HOOK_DIR)"
+
+uninstall-hook-%:
+	$(SUB_MAKE) uninstall-hook-$* INSTALL_DIR="$(INSTALL_HOOK_DIR)"
+
+uninstall-skills:
+	@set -e; \
+	for skill in $(SKILLS); do \
+		rm -rf "$(AGENTS_SKILLS_DIR)/$$skill"; \
+		rm -rf "$(CLAUDE_SKILLS_DIR)/$$skill"; \
+		rm -rf "$(CODEX_SKILLS_DIR)/$$skill"; \
 	done
 
 diff:
