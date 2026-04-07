@@ -28,6 +28,12 @@ while [ "$#" -gt 0 ]; do
       SETTINGS_FILE="$2"; shift 2 ;;
     --install-dir)
       [ "$#" -ge 2 ] || usage
+      case "$2" in
+        ""|"/"|".")
+          printf 'Error: refusing unsafe install directory: %s\n' "$2" >&2
+          exit 1
+          ;;
+      esac
       INSTALL_DIR="$2"; shift 2 ;;
     --dry-run)
       DRY_RUN=1; shift ;;
@@ -64,13 +70,9 @@ fi
 # --- Helper: conditionally remove installed directory ----------------------
 
 maybe_remove_install_dir() {
+  # INSTALL_DIR safety is validated at argument-parse time so this helper
+  # never encounters an unsafe value and cannot exit(1) mid-operation.
   if [ "$REMOVE_FILES" -eq 1 ] && [ "$ALL_MODE" -eq 1 ]; then
-    case "$INSTALL_DIR" in
-      ""|"/"|".")
-        printf 'Error: refusing to remove unsafe install directory: %s\n' "$INSTALL_DIR" >&2
-        exit 1
-        ;;
-    esac
     if [ "$DRY_RUN" -eq 1 ]; then
       if [ -d "$INSTALL_DIR" ]; then printf 'Dry run: would remove install directory: %s\n' "$INSTALL_DIR"; fi
     elif [ -d "$INSTALL_DIR" ]; then
