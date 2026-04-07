@@ -110,6 +110,8 @@ fi
 
 # --- Build jq filter -------------------------------------------------------
 
+# Single-quoted so \\ is literal. Shell double-quote expansion preserves \\,
+# and jq interprets \\ as a single backslash, yielding the regex \. (literal dot).
 NOTIFY_PATTERN='claude-notify/notify\\.sh'
 
 if [ "$ALL_MODE" -eq 1 ]; then
