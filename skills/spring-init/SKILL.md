@@ -74,7 +74,7 @@ Dependencies may have a `versionRange` field using Maven range notation, e.g.
 - `[` = inclusive lower bound, `(` = exclusive lower bound
 - `]` = inclusive upper bound, `)` = exclusive upper bound
 - A bare version means "this version and above"
-- Compare version parts numerically; qualifier order: `RELEASE` > `RC` > `M` > `BUILD-SNAPSHOT`
+- Compare version parts numerically; qualifier order: no qualifier = `RELEASE` > `RC` > `M` > `BUILD-SNAPSHOT`
 - Empty or absent `versionRange` means compatible with all Boot versions
 
 A dependency is compatible with the selected Boot version if the Boot version
