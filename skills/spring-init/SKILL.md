@@ -490,7 +490,8 @@ After executing the `spring init` command:
      executable in the target directory.
    - If YAML config was chosen, verify that `application.yaml` exists in
      `<artifact>/src/main/resources/` and that `application.properties` does NOT
-     exist. If the conversion was missed, do it now before reporting success.
+     exist. Also check `<artifact>/src/test/resources/` if it was converted.
+     If any conversion was missed, do it now before reporting success.
 6. Report success with a summary of what was created.
 7. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
    `cd <artifact> && ./mvnw spring-boot:run` (Maven). For subproject layout,
