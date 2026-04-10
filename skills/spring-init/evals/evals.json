@@ -51,6 +51,21 @@
         "Step 4d (config format) IS asked — customize path shows it",
         "YAML conversion was performed after generation"
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "I have an existing Gradle root project here (settings.gradle.kts exists in cwd). Create a new spring boot subproject called billing with web dependency, use defaults for everything else.",
+      "expected_output": "A Gradle subproject registered in the root settings.gradle.kts, with YAML config and no standalone Gradle wrapper",
+      "files": [],
+      "expectations": [
+        "application.yaml exists in billing/src/main/resources/",
+        "application.properties does NOT exist in billing/src/main/resources/",
+        "YAML conversion happened BEFORE subproject cleanup (step 2 before step 3)",
+        "billing/gradlew does NOT exist (removed during subproject cleanup)",
+        "billing/settings.gradle.kts does NOT exist (removed during subproject cleanup)",
+        "Root settings.gradle.kts contains include(\"billing\")",
+        "Step 4d (config format) is NOT asked — defaults path skips it"
+      ]
     }
   ]
 }
