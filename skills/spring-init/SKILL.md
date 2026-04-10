@@ -460,11 +460,15 @@ After executing the `spring init` command:
    - Read `./<artifact>/src/main/resources/application.properties`
    - Convert properties to nested YAML (split keys on `.`, 2-space indent).
      For a freshly generated project, the file typically contains just
-     `spring.application.name=<artifact>`:
+     `spring.application.name=<artifact>`. Example conversion:
+     ```properties
+     spring.application.name=demo
+     ```
+     becomes:
      ```yaml
-     spring.application.name=demo  →  spring:
-                                         application:
-                                           name: demo
+     spring:
+       application:
+         name: demo
      ```
      For files with multiple entries, merge keys sharing a common prefix.
      Parse correctly: treat `=` or `:` as key-value separators, skip blank
@@ -489,8 +493,9 @@ After executing the `spring init` command:
      executable in the target directory.
    - If YAML config was chosen, verify that `application.yaml` exists in
      `<artifact>/src/main/resources/` and that `application.properties` does NOT
-     exist. Also check `<artifact>/src/test/resources/` if it was converted.
-     If any conversion was missed, do it now before reporting success.
+     exist. Also check `<artifact>/src/test/resources/` — if `application.properties`
+     exists there, convert it now. If any conversion was missed, do it before
+     reporting success.
 6. Report success with a summary of what was created.
 7. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
    `cd <artifact> && ./mvnw spring-boot:run` (Maven). For subproject layout,
