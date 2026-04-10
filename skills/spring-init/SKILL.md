@@ -284,9 +284,10 @@ Options: "Standalone project in ./<artifact>", "Subproject of root"
 > `spring-boot-starter-parent`, and Maven allows only one `<parent>`, making
 > automatic wiring infeasible without restructuring the root project.
 
-### Step 4d — Config file format
+### Step 4d — Config file format (customize path only)
 
-Always ask this, even on the defaults path.
+Skip this step on the defaults path — YAML is already the default from Step 1.
+Only ask this when the user chose "Customize settings" in Step 1.
 
 Ask via `AskUserQuestion`:
 
@@ -452,35 +453,42 @@ After executing the `spring init` command:
    and offer to re-select dependencies or Boot version. If the failure seems
    related to a stale Spring CLI, suggest upgrading:
    `sdk install springboot {LATEST_STABLE_BOOT.display}`.
-2. **If subproject layout was chosen** (Gradle only), clean up and register the module:
+
+2. **CRITICAL — Convert `application.properties` to `application.yaml`.**
+   DO NOT SKIP THIS STEP. This is the most commonly missed step in this skill.
+   If the user chose YAML config (the default), convert before doing anything else:
+   - Read `./<artifact>/src/main/resources/application.properties`
+   - Convert properties to nested YAML (split keys on `.`, 2-space indent).
+     For a freshly generated project, the file typically contains just
+     `spring.application.name=<artifact>`:
+     ```
+     spring.application.name=demo  →  spring:
+                                         application:
+                                           name: demo
+     ```
+     For files with multiple entries, merge keys sharing a common prefix.
+     Parse correctly: treat `=` or `:` as key-value separators, skip blank
+     lines and comment lines (`#` or `!`), and quote values that YAML would
+     misinterpret (`true`, `false`, `yes`, `no`, `on`, `off`, `null`, or
+     bare numbers) by wrapping them in single quotes.
+   - Write the result to `application.yaml` in the same directory.
+   - Delete `application.properties`.
+   - Do the same for `./<artifact>/src/test/resources/application.properties` if it exists.
+   If the user explicitly chose Properties in Step 4d, skip this step.
+
+3. **If subproject layout was chosen** (Gradle only), clean up and register the module:
    - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
      `settings.gradle.kts` (or `settings.gradle`), `HELP.md`, `.gitignore`, and
      `.gitattributes`.
    - Append `include("<artifact>")` to the root `settings.gradle.kts` (or
      `settings.gradle`), unless it already contains that include.
-
-3. **Convert config format if YAML was chosen.** For each `application.properties`
-   file in `./<artifact>/src/main/resources/` and `./<artifact>/src/test/resources/`
-   (if the file exists):
-   - Read the file contents.
-   - Parse `.properties` lines correctly: treat `=` or `:` as key-value separators,
-     skip blank lines and comment lines (starting with `#` or `!`), and handle
-     backslash line continuations if present.
-   - Split parsed keys on `.` to produce nested YAML with 2-space indentation.
-     Merge keys that share a common prefix. Quote values that YAML would
-     misinterpret as non-string types (e.g. `true`, `false`, `yes`, `no`, `on`,
-     `off`, `null`, or bare numbers) by wrapping them in single quotes.
-     For example, `spring.application.name=demo` becomes:
-     ```yaml
-     spring:
-       application:
-         name: demo
-     ```
-   - Write the converted content to `application.yaml` in the same directory.
-   - Delete the original `application.properties`.
 4. List the generated project structure: `find <target> -type f | head -30`.
-5. If Gradle-based and standalone layout, verify `./gradlew` exists and is executable
-   in the target directory.
+5. **Verify project integrity:**
+   - If Gradle-based and standalone layout, verify `./gradlew` exists and is
+     executable in the target directory.
+   - If YAML config was chosen, verify that `application.yaml` exists in
+     `<artifact>/src/main/resources/` and that `application.properties` does NOT
+     exist. If the conversion was missed, do it now before reporting success.
 6. Report success with a summary of what was created.
 7. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
    `cd <artifact> && ./mvnw spring-boot:run` (Maven). For subproject layout,

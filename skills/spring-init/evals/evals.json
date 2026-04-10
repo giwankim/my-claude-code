@@ -1,0 +1,43 @@
+{
+  "skill_name": "spring-init",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "create a new spring boot project with all defaults. just accept everything and generate it.",
+      "expected_output": "A Spring Boot project with application.yaml (not application.properties) in src/main/resources",
+      "files": [],
+      "expectations": [
+        "application.yaml exists in <artifact>/src/main/resources/",
+        "application.properties does NOT exist in <artifact>/src/main/resources/",
+        "application.yaml contains nested YAML with spring.application.name",
+        "The project directory was created successfully",
+        "Step 4d (config format) is NOT asked — defaults path skips it"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "spring init a new project called myapi with web and data-jpa dependencies, use defaults for everything else",
+      "expected_output": "A Spring Boot project named 'myapi' with web+jpa deps and application.yaml config",
+      "files": [],
+      "expectations": [
+        "application.yaml exists in myapi/src/main/resources/",
+        "application.properties does NOT exist in myapi/src/main/resources/",
+        "The project includes web and data-jpa dependencies",
+        "The artifact name is 'myapi'",
+        "Step 4d (config format) is NOT asked — defaults path skips it"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "new spring boot project, I want to customize settings. use maven, java, boot 3.x if available, and properties format (not yaml)",
+      "expected_output": "A Maven/Java Spring Boot project with application.properties (user explicitly chose properties)",
+      "files": [],
+      "expectations": [
+        "application.properties exists in <artifact>/src/main/resources/",
+        "application.yaml does NOT exist in <artifact>/src/main/resources/",
+        "The project uses Maven (pom.xml, not build.gradle)",
+        "The user was asked about config format (Step 4d)"
+      ]
+    }
+  ]
+}
