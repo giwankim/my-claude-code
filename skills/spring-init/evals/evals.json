@@ -56,7 +56,7 @@
       "id": 5,
       "prompt": "I have an existing Gradle root project here (settings.gradle.kts exists in cwd). Create a new spring boot subproject called billing with web dependency, use defaults for everything else.",
       "expected_output": "A Gradle subproject registered in the root settings.gradle.kts, with YAML config and no standalone Gradle wrapper",
-      "files": [],
+      "files": ["evals/files/settings.gradle.kts"],
       "expectations": [
         "application.yaml exists in billing/src/main/resources/",
         "application.properties does NOT exist in billing/src/main/resources/",
