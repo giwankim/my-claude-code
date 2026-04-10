@@ -484,7 +484,8 @@ After executing the `spring init` command:
 
 3. **If subproject layout was chosen** (Gradle only), clean up and register the module:
    - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
-     `settings.gradle.kts` (or `settings.gradle`), and `HELP.md`.
+     `settings.gradle.kts` (or `settings.gradle`), `HELP.md`, `.gitignore`, and
+     `.gitattributes`.
    - Append `include("<artifact>")` to the root `settings.gradle.kts` (or
      `settings.gradle`), unless it already contains that include.
 4. List the generated project structure: `find <target> -type f | head -30`.
