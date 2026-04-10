@@ -476,7 +476,8 @@ After executing the `spring init` command:
      continuations (join the continued line before splitting on `=`/`:`),
      and quote values that YAML would misinterpret (`true`, `false`, `yes`,
      `no`, `on`, `off`, `null`, or bare numbers) by wrapping them in
-     single quotes.
+     single quotes. If a value contains a single quote, escape it as `''`
+     before wrapping.
    - Write the result to `application.yaml` in the same directory.
    - Delete `application.properties`.
    - Do the same for `./<artifact>/src/test/resources/application.properties` if it exists.
