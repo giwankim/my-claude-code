@@ -28,6 +28,18 @@
       ]
     },
     {
+      "id": 3,
+      "prompt": "new spring boot project, I want to customize settings. use maven, java, boot 3.x if available, and properties format (not yaml)",
+      "expected_output": "A Maven/Java Spring Boot project with application.properties (user explicitly chose properties)",
+      "files": [],
+      "expectations": [
+        "application.properties exists in <artifact>/src/main/resources/",
+        "application.yaml does NOT exist in <artifact>/src/main/resources/",
+        "The project uses Maven (pom.xml, not build.gradle)",
+        "The user was asked about config format (Step 4d)"
+      ]
+    },
+    {
       "id": 4,
       "prompt": "new spring boot project, customize settings. use gradle-kotlin, kotlin, latest boot version, and yaml format",
       "expected_output": "A Gradle-Kotlin project with application.yaml after explicit YAML choice in customize path",
@@ -38,18 +50,6 @@
         "The project uses Gradle (build.gradle.kts exists)",
         "Step 4d (config format) IS asked — customize path shows it",
         "YAML conversion was performed after generation"
-      ]
-    },
-    {
-      "id": 3,
-      "prompt": "new spring boot project, I want to customize settings. use maven, java, boot 3.x if available, and properties format (not yaml)",
-      "expected_output": "A Maven/Java Spring Boot project with application.properties (user explicitly chose properties)",
-      "files": [],
-      "expectations": [
-        "application.properties exists in <artifact>/src/main/resources/",
-        "application.yaml does NOT exist in <artifact>/src/main/resources/",
-        "The project uses Maven (pom.xml, not build.gradle)",
-        "The user was asked about config format (Step 4d)"
       ]
     }
   ]
