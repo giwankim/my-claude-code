@@ -461,16 +461,18 @@ After executing the `spring init` command:
    - Convert properties to nested YAML (split keys on `.`, 2-space indent).
      For a freshly generated project, the file typically contains just
      `spring.application.name=<artifact>`:
-     ```
+     ```yaml
      spring.application.name=demo  →  spring:
                                          application:
                                            name: demo
      ```
      For files with multiple entries, merge keys sharing a common prefix.
      Parse correctly: treat `=` or `:` as key-value separators, skip blank
-     lines and comment lines (`#` or `!`), and quote values that YAML would
-     misinterpret (`true`, `false`, `yes`, `no`, `on`, `off`, `null`, or
-     bare numbers) by wrapping them in single quotes.
+     lines and comment lines (`#` or `!`), handle backslash line
+     continuations (join the continued line before splitting on `=`/`:`),
+     and quote values that YAML would misinterpret (`true`, `false`, `yes`,
+     `no`, `on`, `off`, `null`, or bare numbers) by wrapping them in
+     single quotes.
    - Write the result to `application.yaml` in the same directory.
    - Delete `application.properties`.
    - Do the same for `./<artifact>/src/test/resources/application.properties` if it exists.
