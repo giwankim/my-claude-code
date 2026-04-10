@@ -454,7 +454,8 @@ After executing the `spring init` command:
    `sdk install springboot {LATEST_STABLE_BOOT.display}`.
 2. **If subproject layout was chosen** (Gradle only), clean up and register the module:
    - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
-     `settings.gradle.kts` (or `settings.gradle`), and `HELP.md`.
+     `settings.gradle.kts` (or `settings.gradle`), `HELP.md`, `.gitignore`, and
+     `.gitattributes`.
    - Append `include("<artifact>")` to the root `settings.gradle.kts` (or
      `settings.gradle`), unless it already contains that include.
 
