@@ -272,6 +272,22 @@
         "After the run completes, `git status` shows skills/foo/newFile.md as untracked (`??`), NOT staged (`A `)",
         "git push ran exactly once"
       ]
+    },
+    {
+      "id": 21,
+      "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/), but install a pre-commit hook that ALWAYS fails with exit code 1 and stderr 'integrity check: fixture hash mismatch' — i.e., a spec check with no auto-fix equivalent (not a formatter, not a linter). Then invoke: /commit-push and accept the proposed split.",
+      "expected_output": "First commit (spring-init) succeeds. Second commit (hooks) fails the pre-commit hook; the skill attempts step 5.4b's bounded retry (re-run a determined fixer), but since the hook is a spec check with no fixer or the fixer attempts still fail, step 5.4c fires: the skill aborts the loop, does NOT attempt step 6 reconciliation, does NOT `git push`, and reports the failed group + hook stderr + unprocessed groups in the final reply. The first commit stays local; the user is told to fix the hook error manually and re-invoke /commit-push. Verifies the abort-on-unrecoverable-hook-failure path (step 5.4c + step 7 skip-push + step 8 failure report).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created (the spring-init commit) — the hooks group never produced a commit",
+        "git push was NOT run (earlier successful commit remains local)",
+        "No reconciliation commit was created (step 6 was skipped due to the abort)",
+        "The skill's reply explicitly identifies the hooks group as FAILED",
+        "The reply includes the hook's stderr output ('integrity check: fixture hash mismatch')",
+        "The reply tells the user to fix the hook error manually and re-invoke /commit-push",
+        "The reply lists the spring-init commit SHA (the one successful commit)",
+        "Exit behavior is a clean abort, not a hang or infinite retry loop"
+      ]
     }
   ]
 }
