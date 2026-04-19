@@ -23,7 +23,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
      ```
      Parse comma-separated numbers and dash ranges. Empty/all-invalid selection → abort and explain. Out-of-range numbers → warn and use only the valid ones. Picked files = candidate set.
    - **Otherwise**: candidate set = all changed files in the working tree (modified, staged, untracked).
-   - **Conflict warning**: if both `--select` and explicit files are passed, warn and use the explicit files.
+   - **Conflict warning + precedence**: if both `--select` and explicit files are passed, warn and use the explicit files. When multiple file-scoping signals are present, precedence is: explicit `@file` args > `--select`/`-i` > the default "all changed files" path.
    - **Pre-existing staging warning**: if `git status` shows files already staged (e.g., from `git add -p`), warn before proceeding — the per-commit loop in step 5 resets the index before staging each group, which discards any partial staging.
 
    **b) Secret filter** (applied to the candidate set on **every** path, including when `--single` or explicit `@file` args are used):

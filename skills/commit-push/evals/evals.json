@@ -150,6 +150,19 @@
         "The commit subject uses a scope reflecting the implementation (e.g., (hooks)), NOT (tests)",
         "git push ran exactly once (or was logged)"
       ]
+    },
+    {
+      "id": 12,
+      "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push -1",
+      "expected_output": "No AskUserQuestion proposal; exactly 1 combined commit. The -1 short-flag is recognized as an alias for --single per the SKILL frontmatter and step 2c's override token list. Parallel to eval 3 (which covers --single) so the alias coverage is explicit.",
+      "files": [],
+      "expectations": [
+        "No AskUserQuestion split-proposal prompt was shown",
+        "Exactly 1 new commit was created containing all changed files (both the spring-init file and the hooks file)",
+        "The skill's reply acknowledges that the -1 single-commit override was honored",
+        "git push ran exactly once (or was logged)",
+        "Reported output includes the single commit SHA"
+      ]
     }
   ]
 }
