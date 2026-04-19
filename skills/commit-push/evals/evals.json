@@ -258,6 +258,20 @@
         "After the run completes, `git status` shows fileA.md as unstaged (` M`), reflecting the index clear",
         "git push ran exactly once"
       ]
+    },
+    {
+      "id": 20,
+      "prompt": "Setup: in a scratch git repo with at least one prior commit, create a brand-new file skills/foo/newFile.md (not in HEAD) and pre-stage it with `git add skills/foo/newFile.md` — pre-invocation `git status --porcelain` shows `A  skills/foo/newFile.md`. Also modify an existing tracked file skills/bar/fileB.md (unstaged, shows ` M skills/bar/fileB.md`). Then invoke: /commit-push --select and pick ONLY skills/bar/fileB.md in the interactive picker. No hooks are installed.",
+      "expected_output": "The skill commits fileB.md as usual. Step 5.1's `git restore --staged :/` removes newFile.md from the index entirely (HEAD has no entry for it), leaving newFile.md as `?? skills/foo/newFile.md` (untracked) in the working tree. Step 6's normalized snapshot — which rewrote the pre-loop `A  skills/foo/newFile.md` as `?? skills/foo/newFile.md` — matches the post-loop state exactly, so the non-candidate branch does NOT flag newFile.md as delta and no spurious warn fires. Verifies the `A → ??` rewrite in the normalization rule (addresses the user-feedback correction on coderabbit minor #3106599233).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created (the skills/bar/fileB.md commit with scope (bar))",
+        "newFile.md is NOT committed as part of this run",
+        "No reconciliation commit was created",
+        "The skill's reply does NOT contain a warning about newFile.md (the `A  → ??` transition is the expected effect of step 5.1's index clear, not hook residue)",
+        "After the run completes, `git status` shows skills/foo/newFile.md as untracked (`??`), NOT staged (`A `)",
+        "git push ran exactly once"
+      ]
     }
   ]
 }
