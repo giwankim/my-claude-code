@@ -230,6 +230,21 @@
         "No AskUserQuestion split-proposal was shown (single resolved-scope group)",
         "git push ran exactly once (or was logged)"
       ]
+    },
+    {
+      "id": 18,
+      "prompt": "Setup: in a scratch git repo, modify a single regular file under skills/foo/ (e.g., append a line to skills/foo/SKILL.md). Also create a tracked `.env` file at the repo root containing secret-looking content (e.g., `API_KEY=abc123`), committed cleanly in a prior commit so it starts clean in the working tree. Install a pre-commit hook that, when invoked, appends a marker line to the .env file in the working tree (simulating a repo-wide formatter that touches every tracked file regardless of what was staged). Then invoke: /commit-push",
+      "expected_output": "The skill creates the skills/foo commit for the candidate file as usual. Step 2b's secret filter excludes .env from the candidate set. After the per-group loop, step 6 detects .env as post-loop residue but classifies it as *outside* the candidate set, so the warn-branch fires: the skill explicitly warns the user about .env being touched by a hook, does NOT auto-stage or auto-commit it, and lets the user decide. Verifies the out-of-candidate-set warn path for secret-filtered files touched by repo-wide hooks (round-3 Codex P1 follow-up on #26).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created for the skills/foo candidate file",
+        "No commit was created that includes .env",
+        ".env is NOT staged and NOT committed at any point during the run",
+        "The skill's reply contains an explicit warning that .env was modified by a pre-commit hook during the run and is out of the candidate set",
+        "The reply tells the user that .env is left unstaged for them to decide (stash, separate commit, or verify hook behavior)",
+        "After the run completes, `git status` still shows .env with an unstaged modification (the hook marker), reflecting that the skill did not touch it",
+        "git push ran exactly once (only the skills/foo commit was pushed)"
+      ]
     }
   ]
 }
