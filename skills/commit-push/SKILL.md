@@ -33,7 +33,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
 
    **c) Commit-count mode**:
    - **Single-commit mode** if any of the following:
-     - Invocation contains `--single`, `-1`, or one of "single commit", "one commit", "as one", "all together", "commit this as one", "as a single commit" → acknowledge the override in your reply.
+     - Invocation contains `--single`, `-1`, or one of these unambiguous multi-word phrases — "single commit", "as one commit", "as a single commit", "commit this as one", "all together" — → acknowledge the override in your reply. Bare tokens like "as one" or "one commit" alone are **not** sufficient; they appear too often in unrelated prose ("commit this as one last sanity check", "this should be one commit per scope") and would false-positive. The phrases above all force the user to express override intent explicitly.
      - The user used `--select` or explicit `@file` args (manual scoping signals "this is one commit's worth of files"; preserves backward-compat with how the picker has always worked).
    - **Auto-detect mode** otherwise.
 
@@ -44,6 +44,8 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    2. **CI/infra directory**: files under `.github/...` group as scope `ci`. This rule fires *before* the generic top-level-directory rule below so `.github` doesn't end up as a literal directory scope; the `ci` mapping reflects what these files actually configure.
    3. **Top-level directory**: files under any other top-level `<dir>/...` group by `<dir>` (e.g., `hooks`, `docs`).
    4. **Root files** (no directory prefix): infer scope per file — `Makefile`/`Dockerfile`/`package.json`/`pyproject.toml`/`Cargo.toml`/build configs → `build`; `README*` and top-level `*.md` → `docs`; `LICENSE*` → `chore`; others → `chore`. Then group root files by inferred scope, so multiple root files sharing a scope form one group while files with different scopes form separate groups (e.g., changing `Makefile` and `Dockerfile` → one `build` group; changing `Makefile` and `README.md` → two groups: `build` and `docs`).
+
+   **Cross-rule scope merging**: groups are keyed by their *resolved scope name*, not by the rule that produced them. So if rule 3.3 yields a `docs` group from `docs/README.md` and rule 3.4 yields a `docs` scope from a root-level `README.md`, those merge into a single `docs` group spanning both files (one `docs(scope)` commit). Same for `ci` (e.g., `.github/workflows/test.yml` from rule 3.2 plus a hypothetical root `.codecov.yml` mapped to `ci`). This keeps commit boundaries deterministic when scope names collide across rules.
 
    **Then refine for tests**: scan files matching `tests/...`, `test/...`, `__tests__/...`, or `test_*.{ext}` / `*_test.{ext}` patterns. Re-attribute each test file to a non-test scope when possible (impl + its tests should be one cohesive commit, not two):
    a. **Path-component match**: `tests/<scope>/...` (e.g., `tests/spring-init/...` → `spring-init`), or filename containing a scope keyword that exists in the candidate set (e.g., `tests/test_hooks.sh` when `hooks` is a non-test scope → `hooks`).
@@ -78,7 +80,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    - Once every candidate file is assigned → step 5 with the user-defined groups in creation order.
 
 5. **Per-commit loop**. For each group (in order). Each iteration creates a NEW commit:
-   1. Clear the index: `git reset HEAD`. Then stage only this group's files via `git add <file>...`. Prefer explicit file args; never `git add -A` or `git add .`. The candidate set has already passed the secret filter (step 2b), so no further secret check is needed here.
+   1. Clear the index: `git restore --staged .` (Git 2.23+ form, preferred over the legacy `git reset HEAD` to avoid confusion with `git reset --hard`; `git reset HEAD` still works on older Git). Then stage only this group's files via `git add <file>...`. Prefer explicit file args; never `git add -A` or `git add .`. The candidate set has already passed the secret filter (step 2b), so no further secret check is needed here.
    2. Draft an Angular-style commit message:
       - **Format:** `type(scope): subject` with a body of bullet-point details.
       - **Types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `style`, `build`, `ci`, `chore`.
