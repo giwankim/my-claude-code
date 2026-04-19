@@ -50,6 +50,8 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    b. **Sole non-test scope**: if exactly one non-test scope exists in the candidate set, attribute all unmatched test files to it.
    c. **Otherwise**: leave unmatched test files in their own `tests` group.
 
+   **Trade-off note**: rule 3b ("sole non-test scope") means adding a *second* non-test scope to a previously-merged changeset can split test files off into their own group (because rule 3b no longer applies). This is intentional — arbitrary attachment to one of two impl scopes would be more surprising than a clean separation. If the user wants a particular test file to land with a particular impl group in a multi-scope changeset, they can pre-stage with `--select` or use `Adjust groupings` (step 4b) to define the grouping explicitly.
+
    - If only 1 group → silently jump to step 5.
    - If 2+ groups → continue to step 4.
 
@@ -87,12 +89,12 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    3. Run `git commit` (create a NEW commit, never `--amend`).
    4. **If a pre-commit hook fails** for this iteration: run the appropriate fixer (formatter, linter), re-stage **only this group's files** (do not pull in files from already-committed earlier groups), and create a NEW commit. Never use `--amend` here — earlier iterations' commits must be preserved exactly.
 
-6. **Reconcile any unstaged residue from cross-group hook auto-fixes**. After the per-commit loop completes, run `git status`. Repo-wide pre-commit hooks (formatters, linters that touch every matching file in the tree, not just staged ones) sometimes auto-fix files that belong to *other* groups — those edits remain unstaged after their iteration ends because step 5.1 only stages the current group's files. Without this reconciliation step, those edits would either silently disappear from the run or pollute the next session. If `git status` shows unstaged changes:
-   - Stage them all (`git add <files>` for each residual file).
-   - Create one final commit, e.g., `chore(commit-push): reconcile hook auto-fixes` (use `style:` if it's purely formatting, or `fix:` if the hook actually fixed bugs — match what the diff actually shows).
-   - Mention this reconciliation commit explicitly in your reply so the user understands why an extra commit appeared and can decide whether to keep it, squash it, or split it later.
-
-   If `git status` is clean (no residue), skip this step entirely — no extra commit is created.
+6. **Reconcile cross-group hook auto-fixes via a delta against the pre-loop snapshot**. Repo-wide pre-commit hooks (formatters, linters that touch every matching file in the tree, not just staged ones) sometimes auto-fix files that belong to *other* groups — those edits remain unstaged after their iteration ends because step 5.1 only stages the current group's files. Without reconciliation, those edits would either silently disappear from the run or pollute the next session. **However, the user may also have had unrelated unstaged changes in their working tree before invoking the skill — those must NOT be swept into a reconciliation commit.** To distinguish:
+   - **Before** entering step 5's loop, snapshot the working-tree state via `git status --porcelain` (capture the output in memory or a temp file). Treat each line — both path and status indicator — as part of the snapshot.
+   - **After** the loop completes, compute the *delta* against the snapshot: files whose status indicator changed (e.g., previously clean → now `M`) or files newly appearing as unstaged. The delta is what hooks introduced during the loop.
+   - If the delta is empty: skip — no extra commit.
+   - If the delta contains only files that were also in the original candidate set (step 2a): stage just the delta files (`git add <delta-file>...`) and create one final commit, typically `chore(commit-push): reconcile hook auto-fixes` (use `style:` if purely formatting, or `fix:` if the hook actually fixed bugs — match the diff). Mention this commit explicitly in your reply so the user understands why an extra commit appeared and can keep/squash/split it.
+   - If the delta contains files *outside* the original candidate set (a hook touched files the user wasn't trying to commit): warn the user and let them decide — do NOT auto-stage these. They may want to stash them, commit them separately under a different intent, or verify the hook's behavior. Auto-committing files the user didn't include in their candidate set would violate the principle that the skill only commits files the user opted in to.
 
 7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch: `git push`. (Single push for the whole batch, regardless of how many commits were created.)
 
