@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Setup: in a scratch git repo, modify two files under skills/commit-push/ (e.g., edit two lines in SKILL.md and create a new sibling file commit-push/notes.md). No other files changed. Then invoke: /commit-push",
+      "prompt": "Setup: in a scratch git repo, modify two files under skills/commit-push/ (e.g., edit two lines in skills/commit-push/SKILL.md and create a new sibling file skills/commit-push/notes.md). No other files changed. Then invoke: /commit-push",
       "expected_output": "A single commit scoped to (commit-push), with no AskUserQuestion proposal shown. Single-group default path — no behavior regression vs. the pre-auto-detect skill.",
       "files": [],
       "expectations": [
@@ -85,6 +85,7 @@
       "id": 7,
       "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/), but configure a pre-commit hook in the scratch repo that fails the FIRST time the second commit is attempted (e.g., a formatter that auto-fixes and exits non-zero on first run, then succeeds). Then invoke: /commit-push and accept the proposed split.",
       "expected_output": "First commit (spring-init) succeeds. Second commit (hooks) fails the pre-commit hook on first attempt; the skill applies the fixer, re-stages, and creates a NEW second commit (no --amend). Both commits exist; git push runs after both succeed.",
+      "files": [],
       "expectations": [
         "Exactly 2 new commits were created in the proposed order",
         "The first commit (spring-init) was not modified or amended after creation",
@@ -162,6 +163,44 @@
         "The skill's reply acknowledges that the -1 single-commit override was honored",
         "git push ran exactly once (or was logged)",
         "Reported output includes the single commit SHA"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Setup: in a scratch git repo, modify two root files: Makefile (append a comment line) and README.md (append a line). No other files are changed. Then invoke: /commit-push",
+      "expected_output": "AskUserQuestion proposal previewing 2 commits — one (build) covering Makefile and one (docs) covering README.md — because root files are now grouped by inferred scope rather than lumped into a single 'one group'. Verifies disambiguation of the prior root-files rule (CodeRabbit major / Devin ANALYSIS_0001).",
+      "files": [],
+      "expectations": [
+        "An AskUserQuestion split-proposal prompt was shown previewing exactly 2 proposed commits",
+        "One proposed commit has scope (build) and contains Makefile",
+        "One proposed commit has scope (docs) and contains README.md",
+        "On accepting 'Yes', exactly 2 commits are created with the correct scopes and file contents",
+        "git push ran exactly once after both commits"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "Setup: in a scratch git repo, modify a single file under .github/workflows/ (e.g., create or modify .github/workflows/test.yml with a trivial change). No other files are changed. Then invoke: /commit-push",
+      "expected_output": "Single commit with scope (ci). Verifies that .github/ files are correctly attributed to the 'ci' scope by an explicit rule rather than being captured by a generic top-level-directory rule that would yield scope (.github). Closes Devin BUG_0002.",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created",
+        "The commit subject uses scope (ci), NOT (.github)",
+        "No AskUserQuestion split-proposal was shown (single group)",
+        "The commit contains exactly the .github/workflows/test.yml file"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Setup: in a scratch git repo, modify skills/spring-init/SKILL.md (append a line) and hooks/notes.txt (append a line). Install a pre-commit hook that simulates a repo-wide formatter — when invoked, it appends a marker comment to ALL tracked .md files in the working tree (including files outside the staged group), then `git add`s only the file that was originally staged, and exits 0. Then invoke: /commit-push and accept the proposed split.",
+      "expected_output": "After the per-group loop completes, an extra reconciliation commit captures the cross-group hook auto-fixes (the marker added to skills/spring-init/SKILL.md by the hook running on a different group's commit). Verifies that repo-wide hook auto-fixes touching earlier-committed files are not silently dropped (Codex P1 #2).",
+      "files": [],
+      "expectations": [
+        "At least 2 per-group commits were created in the proposed order (spring-init, then hooks)",
+        "If unstaged residue remained in the working tree after the per-group loop, the skill created exactly one additional reconciliation commit (e.g., chore(commit-push): reconcile hook auto-fixes) covering that residue",
+        "After the run completes, `git status` shows a clean working tree (no unstaged residue)",
+        "The skill's reply explicitly mentions any reconciliation commit so the user understands why an extra commit appeared",
+        "git push ran exactly once after all commits (per-group + reconciliation) succeeded"
       ]
     }
   ]
