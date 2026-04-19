@@ -245,6 +245,19 @@
         "After the run completes, `git status` still shows .env with an unstaged modification (the hook marker), reflecting that the skill did not touch it",
         "git push ran exactly once (only the skills/foo commit was pushed)"
       ]
+    },
+    {
+      "id": 19,
+      "prompt": "Setup: in a scratch git repo with at least one prior commit, modify two files: skills/foo/fileA.md and skills/bar/fileB.md. Pre-stage fileA using `git add skills/foo/fileA.md` BEFORE invoking the skill (so pre-invocation `git status --porcelain` shows `M  skills/foo/fileA.md` and ` M skills/bar/fileB.md`). Then invoke: /commit-push --select and pick ONLY skills/bar/fileB.md in the interactive picker. No hooks are installed.",
+      "expected_output": "The skill commits fileB.md with a (bar) scope as usual. Step 5.1's index clear transforms fileA's pre-loop `M ` into post-loop ` M`, but step 6's normalized snapshot comparison treats this as a no-op (identical to the normalized snapshot), so the non-candidate warn branch does NOT fire for fileA. The run completes with exactly 1 commit, no reconciliation commit, and no spurious warn. Verifies the snapshot-normalization fix for pre-staged non-candidate files (coderabbit minor #3106599233).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created (the skills/bar/fileB.md commit with scope (bar))",
+        "No reconciliation commit was created",
+        "The skill's reply does NOT contain a warning about fileA.md (since fileA's transition from staged to unstaged is the expected effect of step 5.1's index clear, not hook residue)",
+        "After the run completes, `git status` shows fileA.md as unstaged (` M`), reflecting the index clear",
+        "git push ran exactly once"
+      ]
     }
   ]
 }
