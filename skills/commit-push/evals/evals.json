@@ -93,6 +93,63 @@
         "git push ran exactly once after both commits succeeded",
         "Reported output includes both commit SHAs, one per line"
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Setup: in a scratch git repo, modify three files in the working tree: skills/spring-init/SKILL.md, hooks/notes.txt, and README.md (all unstaged). Then invoke: /commit-push --single @skills/spring-init/SKILL.md @hooks/notes.txt",
+      "expected_output": "Single commit containing ONLY the two explicitly named files; README.md is left uncommitted in the working tree; the --single override is acknowledged. Verifies that --single does not bypass explicit @file scoping (Codex P1 fix).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created",
+        "The commit contains exactly skills/spring-init/SKILL.md AND hooks/notes.txt (and only those two files)",
+        "README.md remains modified in the working tree and is NOT included in the commit",
+        "The skill's reply acknowledges that the --single override was honored",
+        "The skill's reply confirms (or implicitly demonstrates) that explicit @file args were respected even with --single",
+        "git push ran exactly once (or was logged)"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Setup: in a scratch git repo, two files in the working tree: skills/spring-init/SKILL.md (modified) and .env (new file containing 'API_KEY=test-secret-do-not-commit'). Then invoke: /commit-push --single",
+      "expected_output": "Single commit containing only skills/spring-init/SKILL.md; .env is excluded by the secret filter with a warning to the user. Verifies that --single does not bypass secret filtering (Codex P1 fix).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created",
+        "The commit contains skills/spring-init/SKILL.md and does NOT contain .env",
+        ".env remains in the working tree as an untracked file (not committed, not deleted)",
+        "The skill's reply warns the user that .env was excluded by the secret filter",
+        "The skill's reply lists which files were excluded so the user can override if needed",
+        "git push ran exactly once (or was logged)"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Setup: in a scratch git repo, modify three files in three distinct top-level scopes: skills/spring-init/SKILL.md, hooks/notes.txt, docs/README.md. Then invoke: /commit-push. When the split-proposal appears, choose 'Adjust groupings'. In the iterative custom-grouping sub-flow, define group 1 = {skills/spring-init/SKILL.md, hooks/notes.txt} and group 2 = {docs/README.md}.",
+      "expected_output": "Two custom commits created via the iterative custom-grouping sub-flow (not via a single --select picker). All three originally-changed files end up across the two commits, with no files left uncommitted. Verifies that 'Adjust groupings' supports multi-commit custom batches (Codex P1 fix).",
+      "files": [],
+      "expectations": [
+        "An initial AskUserQuestion split-proposal showed 3 proposed commits",
+        "User selecting 'Adjust groupings' triggered an iterative custom-grouping sub-flow, NOT a single one-shot --select picker",
+        "Multiple AskUserQuestion calls were made during the sub-flow (one per custom group definition)",
+        "Exactly 2 new commits were created (per the user's custom groupings, not the proposed 3-way split and not a single combined commit)",
+        "Commit 1 contains skills/spring-init/SKILL.md AND hooks/notes.txt (the combined custom group)",
+        "Commit 2 contains docs/README.md only",
+        "All 3 originally-changed files are accounted for across the commits (no files left uncommitted)",
+        "git push ran exactly once after all custom commits succeeded"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Setup: in a scratch git repo, two modified files: hooks/runner.sh (impl) and tests/test_hooks.sh (test that exercises the hooks impl). Then invoke: /commit-push",
+      "expected_output": "Single commit covering both files. The grouping heuristic recognizes that tests/test_hooks.sh is the test for the hooks impl and merges them into one cohesive group rather than splitting impl from tests. Verifies the test-pairing refinement (Codex P2 fix).",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created",
+        "The commit contains BOTH hooks/runner.sh AND tests/test_hooks.sh",
+        "No AskUserQuestion split-proposal was shown (the heuristic merged tests with the hooks impl into a single group)",
+        "The commit subject uses a scope reflecting the implementation (e.g., (hooks)), NOT (tests)",
+        "git push ran exactly once (or was logged)"
+      ]
     }
   ]
 }
