@@ -26,10 +26,10 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    - **Conflict warning + precedence**: if both `--select` and explicit files are passed, warn and use the explicit files. When multiple file-scoping signals are present, precedence is: explicit `@file` args > `--select`/`-i` > the default "all changed files" path.
    - **Pre-existing staging warning**: if `git status` shows files already staged (e.g., from `git add -p`), warn before proceeding — the per-commit loop in step 5 resets the index before staging each group, which discards any partial staging.
 
-   **b) Secret filter** (applied to the candidate set on **every** path, including when `--single` or explicit `@file` args are used):
+   **b) Secret filter** (applied to the candidate set on **every** path — including when `--single`, `-1`, `--select`, or explicit `@file` args are used; the filter cannot be bypassed by any flag):
    - Exclude files that likely contain secrets: `.env`/`.env.*`, private keys (`*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*` — the `.pub` siblings are public and OK), credential files (`credentials*`, `*credentials.json`, `aws_credentials*`), and any file whose name contains `token` or `secret` unless it's clearly a safe fixture (e.g., a test data file the user obviously meant to commit).
    - When in doubt, exclude and tell the user.
-   - List any excluded files explicitly in your reply so the user can re-include them with `--select` or explicit args if the exclusion was a false positive.
+   - List any excluded files explicitly in your reply so the user knows what was omitted. If the exclusion was a false positive (e.g., a genuine test fixture whose filename matches the secret pattern), the user's workarounds are (a) rename the file so it no longer matches, (b) adjust the filter rules above if the mis-match is structural, or (c) commit the file manually outside this skill (`git add` + `git commit` + `git push`). Re-invoking `/commit-push` with `--select` or explicit `@file` args will NOT re-include the filtered file — the filter is deliberately absolute as a safety invariant, and no flag overrides it.
 
    **c) Commit-count mode**:
    - **Single-commit mode** if any of the following:
