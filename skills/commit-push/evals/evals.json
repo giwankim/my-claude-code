@@ -1,0 +1,98 @@
+{
+  "skill_name": "commit-push",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Setup: in a scratch git repo, modify two files under skills/commit-push/ (e.g., edit two lines in SKILL.md and create a new sibling file commit-push/notes.md). No other files changed. Then invoke: /commit-push",
+      "expected_output": "A single commit scoped to (commit-push), with no AskUserQuestion proposal shown. Single-group default path — no behavior regression vs. the pre-auto-detect skill.",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created",
+        "Commit subject matches the Angular pattern `<type>(commit-push): <subject>` where type is one of feat/fix/docs/refactor/perf/test/style/build/chore/ci",
+        "No AskUserQuestion split-proposal prompt was shown to the user",
+        "git push ran exactly once",
+        "Reported output includes the new commit SHA"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (e.g., edit SKILL.md) AND one file under hooks/ (e.g., touch hooks/notes.txt). Two distinct top-level scopes. Then invoke: /commit-push",
+      "expected_output": "An AskUserQuestion proposal previewing 2 commits — one (spring-init), one (hooks) — with three options. Accepting 'Yes' produces 2 commits, one push at the end, both SHAs reported.",
+      "files": [],
+      "expectations": [
+        "An AskUserQuestion prompt was shown previewing exactly 2 proposed commits",
+        "The proposal listed the files belonging to each proposed commit, grouped by inferred scope",
+        "The proposal offered exactly 3 options: confirm split, combine into single commit, adjust groupings",
+        "Proposed commit subjects use scopes (spring-init) and (hooks) respectively",
+        "After user accepts the split, exactly 2 new commits were created in the proposed order",
+        "Each commit contains only the files from its group (spring-init commit does not touch hooks/, and vice versa)",
+        "git push ran exactly once after both commits succeeded",
+        "Reported output includes both commit SHAs, one per line"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push --single",
+      "expected_output": "No AskUserQuestion proposal; exactly 1 combined commit. The --single flag is recognized as an explicit override of auto-detect.",
+      "files": [],
+      "expectations": [
+        "No AskUserQuestion split-proposal prompt was shown",
+        "Exactly 1 new commit was created containing all changed files (both the spring-init file and the hooks file)",
+        "git push ran exactly once",
+        "Reported output includes the single commit SHA"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push commit this as one commit",
+      "expected_output": "No AskUserQuestion proposal; exactly 1 combined commit. The natural-language phrase 'as one commit' is recognized as an override of auto-detect.",
+      "files": [],
+      "expectations": [
+        "No AskUserQuestion split-proposal prompt was shown",
+        "Exactly 1 new commit was created containing all changed files",
+        "The skill's response acknowledges the natural-language single-commit signal (e.g., notes that auto-detect was bypassed)",
+        "git push ran exactly once",
+        "Reported output includes the single commit SHA"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push --select",
+      "expected_output": "Existing interactive picker runs (no auto-detect). User picks one file. Exactly 1 commit from picked files. No regression vs. the pre-auto-detect skill.",
+      "files": [],
+      "expectations": [
+        "An AskUserQuestion prompt was shown listing the changed files with M/A/D/?? status indicators (the existing --select picker idiom)",
+        "No split-proposal prompt was shown (auto-detect was skipped because --select was passed)",
+        "After user selects file numbers, exactly 1 new commit was created containing only the selected files",
+        "git push ran exactly once",
+        "Reported output includes the commit SHA"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Setup: in a scratch git repo, modify one file in each of 6 distinct top-level directories (e.g., one file each under skills/spring-init/, skills/commit-push/, hooks/, tests/, docs/, and a root file like Makefile). Then invoke: /commit-push",
+      "expected_output": "AskUserQuestion proposal lists 6 proposed commits AND surfaces a cap warning that the change is unusually scattered. The 'Combine' and 'Adjust groupings' options are surfaced prominently.",
+      "files": [],
+      "expectations": [
+        "An AskUserQuestion proposal was shown previewing 6 (or more) proposed commits",
+        "The proposal includes a warning that the change spans an unusually high number of groups (>5)",
+        "The 'Combine into a single commit' and 'Adjust groupings' options are presented prominently in the proposal",
+        "If the user picks 'Combine', exactly 1 commit is created containing all 6 changes",
+        "If the user picks 'Yes' on the split, all 6 commits are created in proposed order"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/), but configure a pre-commit hook in the scratch repo that fails the FIRST time the second commit is attempted (e.g., a formatter that auto-fixes and exits non-zero on first run, then succeeds). Then invoke: /commit-push and accept the proposed split.",
+      "expected_output": "First commit (spring-init) succeeds. Second commit (hooks) fails the pre-commit hook on first attempt; the skill applies the fixer, re-stages, and creates a NEW second commit (no --amend). Both commits exist; git push runs after both succeed.",
+      "expectations": [
+        "Exactly 2 new commits were created in the proposed order",
+        "The first commit (spring-init) was not modified or amended after creation",
+        "The second commit (hooks) was created via `git commit` (NOT `git commit --amend`)",
+        "If the pre-commit hook produced auto-fixes, those fixes are present in the second commit",
+        "git push ran exactly once after both commits succeeded",
+        "Reported output includes both commit SHAs, one per line"
+      ]
+    }
+  ]
+}
