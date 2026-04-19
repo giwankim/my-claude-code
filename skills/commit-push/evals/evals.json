@@ -70,7 +70,7 @@
     },
     {
       "id": 6,
-      "prompt": "Setup: in a scratch git repo, modify one file in each of 6 distinct top-level directories (e.g., one file each under skills/spring-init/, skills/commit-push/, hooks/, tests/, docs/, and a root file like Makefile). Then invoke: /commit-push",
+      "prompt": "Setup: in a scratch git repo, modify one file in each of 6 distinct grouping scopes that the step 3 heuristic will produce: one file under skills/spring-init/ (scope spring-init via rule 3.1), one under skills/commit-push/ (scope commit-push via rule 3.1), one under hooks/ (scope hooks via rule 3.3), one under tests/ (scope tests, kept separate because there are multiple non-test scopes), one under docs/ (scope docs via rule 3.3), and a root file like Makefile (scope build via rule 3.4). Then invoke: /commit-push",
       "expected_output": "AskUserQuestion proposal lists 6 proposed commits AND surfaces a cap warning that the change is unusually scattered. The 'Combine' and 'Adjust groupings' options are surfaced prominently.",
       "files": [],
       "expectations": [
@@ -201,6 +201,21 @@
         "After the run completes, `git status` shows a clean working tree (no unstaged residue)",
         "The skill's reply explicitly mentions any reconciliation commit so the user understands why an extra commit appeared",
         "git push ran exactly once after all commits (per-group + reconciliation) succeeded"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Setup: same as scenario 10 (three modified files in three distinct top-level scopes: skills/spring-init/SKILL.md, hooks/notes.txt, docs/README.md). Then invoke: /commit-push. When the initial split-proposal appears, choose 'Adjust groupings'. On the FIRST iteration of the custom-grouping sub-flow, select files for group 1 (e.g., {skills/spring-init/SKILL.md}). On the SECOND iteration, choose 'Cancel and return to the proposal'. From the re-shown 3-option split-proposal, choose 'Yes — create N commits as proposed'.",
+      "expected_output": "The Cancel option discards the in-progress group 1 (no commit is created for it), returns control to step 4's original 3-option proposal, and the final accepted 'Yes' produces the original 3-way split (3 commits, NOT 1 commit from the discarded group). Verifies the Cancel branch of step 4b's iterative sub-flow that wasn't covered by eval 10. Closes the round-3 coverage gap.",
+      "files": [],
+      "expectations": [
+        "Initial AskUserQuestion split-proposal showed 3 proposed commits",
+        "User selecting 'Adjust groupings' triggered the iterative custom-grouping sub-flow with at least 2 AskUserQuestion calls before cancel",
+        "After the user chose 'Cancel and return to the proposal' on the second iteration, the in-progress group 1 was discarded (no commit was created from it)",
+        "The original 3-option split-proposal was re-shown after cancel",
+        "User selecting 'Yes' on the re-shown proposal produced exactly 3 commits matching the original auto-detected split (NOT 1 commit from the discarded custom group)",
+        "All 3 originally-changed files are accounted for across the final commits",
+        "git push ran exactly once after all final commits"
       ]
     }
   ]
