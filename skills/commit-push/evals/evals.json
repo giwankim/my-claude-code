@@ -217,6 +217,19 @@
         "All 3 originally-changed files are accounted for across the final commits",
         "git push ran exactly once after all final commits"
       ]
+    },
+    {
+      "id": 17,
+      "prompt": "Setup: in a scratch git repo, modify two files that resolve to the SAME inferred scope via DIFFERENT step-3 rules: docs/README.md (rule 3.3 → group `docs`) and a root-level README.md (rule 3.4 → scope `docs`). No other files changed. Then invoke: /commit-push",
+      "expected_output": "Single commit with scope (docs) covering BOTH files. Verifies the cross-rule scope merging clarification: groups are keyed by resolved scope name, so `docs` from rule 3.3 and `docs` from rule 3.4 merge into one group rather than producing two separate `docs(scope)` commits.",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created",
+        "The commit subject uses scope (docs)",
+        "The commit contains BOTH docs/README.md AND the root-level README.md (cross-rule merge)",
+        "No AskUserQuestion split-proposal was shown (single resolved-scope group)",
+        "git push ran exactly once (or was logged)"
+      ]
     }
   ]
 }
