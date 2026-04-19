@@ -41,8 +41,9 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
 
 3. **Auto-detect cohesive groups** in the candidate set. Apply rules in order; first match wins per file:
    1. **Skill subdirectory**: files under `skills/<name>/...` group by `<name>` (e.g., `spring-init`, `commit-push`).
-   2. **Top-level directory**: files under any other top-level `<dir>/...` group by `<dir>` (e.g., `hooks`, `docs`).
-   3. **Root files** (no directory prefix, or under `.github/`): one group; infer scope from filename — `Makefile` → `build`, `README.md` → `docs`, files under `.github/...` → `ci`, others → `chore`.
+   2. **CI/infra directory**: files under `.github/...` group as scope `ci`. This rule fires *before* the generic top-level-directory rule below so `.github` doesn't end up as a literal directory scope; the `ci` mapping reflects what these files actually configure.
+   3. **Top-level directory**: files under any other top-level `<dir>/...` group by `<dir>` (e.g., `hooks`, `docs`).
+   4. **Root files** (no directory prefix): infer scope per file — `Makefile`/`Dockerfile`/`package.json`/`pyproject.toml`/`Cargo.toml`/build configs → `build`; `README*` and top-level `*.md` → `docs`; `LICENSE*` → `chore`; others → `chore`. Then group root files by inferred scope, so multiple root files sharing a scope form one group while files with different scopes form separate groups (e.g., changing `Makefile` and `Dockerfile` → one `build` group; changing `Makefile` and `README.md` → two groups: `build` and `docs`).
 
    **Then refine for tests**: scan files matching `tests/...`, `test/...`, `__tests__/...`, or `test_*.{ext}` / `*_test.{ext}` patterns. Re-attribute each test file to a non-test scope when possible (impl + its tests should be one cohesive commit, not two):
    a. **Path-component match**: `tests/<scope>/...` (e.g., `tests/spring-init/...` → `spring-init`), or filename containing a scope keyword that exists in the candidate set (e.g., `tests/test_hooks.sh` when `hooks` is a non-test scope → `hooks`).
@@ -86,6 +87,13 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    3. Run `git commit` (create a NEW commit, never `--amend`).
    4. **If a pre-commit hook fails** for this iteration: run the appropriate fixer (formatter, linter), re-stage **only this group's files** (do not pull in files from already-committed earlier groups), and create a NEW commit. Never use `--amend` here — earlier iterations' commits must be preserved exactly.
 
-6. After **all** commits in the loop succeed, push to origin on the current branch: `git push`. (Single push for the whole batch, regardless of how many commits were created.)
+6. **Reconcile any unstaged residue from cross-group hook auto-fixes**. After the per-commit loop completes, run `git status`. Repo-wide pre-commit hooks (formatters, linters that touch every matching file in the tree, not just staged ones) sometimes auto-fix files that belong to *other* groups — those edits remain unstaged after their iteration ends because step 5.1 only stages the current group's files. Without this reconciliation step, those edits would either silently disappear from the run or pollute the next session. If `git status` shows unstaged changes:
+   - Stage them all (`git add <files>` for each residual file).
+   - Create one final commit, e.g., `chore(commit-push): reconcile hook auto-fixes` (use `style:` if it's purely formatting, or `fix:` if the hook actually fixed bugs — match what the diff actually shows).
+   - Mention this reconciliation commit explicitly in your reply so the user understands why an extra commit appeared and can decide whether to keep it, squash it, or split it later.
 
-7. Report **all** commit SHAs created in this run, one per line.
+   If `git status` is clean (no residue), skip this step entirely — no extra commit is created.
+
+7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch: `git push`. (Single push for the whole batch, regardless of how many commits were created.)
+
+8. Report **all** commit SHAs created in this run, one per line.
