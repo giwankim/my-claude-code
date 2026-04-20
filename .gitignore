@@ -20,3 +20,4 @@ hooks/claude-notify/claude-notify.app/Contents/_CodeSignature/
 
 # Skill eval workspaces
 spring-init-workspace/
+skills/commit-push-workspace/
