@@ -1,6 +1,6 @@
 ---
 name: commit-push
-description: Commit staged/unstaged changes and push to origin with an Angular-style commit message. By default, auto-detects when changes span multiple cohesive scopes and proposes splitting them into multiple commits; user can override with `--single`/`-1` or natural-language phrases like "as one commit" or "single commit". File scoping (explicit `@file` args, `--select` interactive picker) and secret-file filtering apply on every path, including the override. Use when the user says "commit and push", "commit this", "/commit-push", or after completing work that should be committed. Accepts optional file arguments to scope the commit, or interactive selection to pick files from the working tree. Also use when the user wants to choose, select, or pick which changed files to include in a commit.
+description: Commit staged/unstaged changes and push to origin with an Angular-style commit message. Auto-detects when changes span multiple cohesive scopes and proposes splitting them into multiple commits; override with `--single`/`-1` or natural-language phrases like "as one commit" or "single commit". File scoping (explicit `@file` args, `--select` interactive picker) and secret-file filtering apply on every path, including the override. Trigger this skill whenever the user wants to commit, check in, save, or wrap up their work — including phrases like "commit and push", "commit this", "check in these changes", "save my work", "wrap this up", "/commit-push", "push my changes", or after completing any task that produced file changes the user will want to land. Also trigger when the user wants to choose, select, or pick which changed files to include in a commit, or mentions splitting commits by scope. Accepts optional file arguments to scope the commit, or interactive selection to pick files from the working tree.
 ---
 
 # Commit and Push
@@ -9,7 +9,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
 
 1. Run `git status` (never use `-uall`), `git diff HEAD`, and `git log --oneline -5` in parallel.
 
-2. **Pre-flight**: determine the candidate file set, apply the secret filter, and pick a commit-count mode. These three concerns are independent: file scoping decides *which files are eligible*; the secret filter removes risky files regardless of scoping; commit-count mode decides *how many commits* to produce. Keeping them separate prevents the override from accidentally bypassing protections.
+2. **Pre-flight**: determine the candidate file set, apply the secret filter, and pick a commit-count mode — three independent concerns, intentionally decoupled so overrides can't bypass the secret filter.
 
    **a) Candidate file set** (files eligible for committing):
    - **Explicit file args** (e.g., `@file1 @file2`): candidate set = those files.
@@ -29,7 +29,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    **b) Secret filter** (applied to the candidate set on **every** path — including when `--single`, `-1`, `--select`, or explicit `@file` args are used; the filter cannot be bypassed by any flag):
    - Exclude files that likely contain secrets: `.env`/`.env.*`, private keys (`*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_dsa*`, `id_ecdsa*`, `id_ed25519*` — the `.pub` siblings are public and OK), credential files (`credentials*`, `*credentials.json`, `aws_credentials*`), and any file whose name contains `token` or `secret` unless it's clearly a safe fixture (e.g., a test data file the user obviously meant to commit).
    - When in doubt, exclude and tell the user.
-   - List any excluded files explicitly in your reply so the user knows what was omitted. If the exclusion was a false positive (e.g., a genuine test fixture whose filename matches the secret pattern), the user's workarounds are (a) rename the file so it no longer matches, (b) adjust the filter rules above if the mis-match is structural, or (c) commit the file manually outside this skill (`git add` + `git commit` + `git push`). Re-invoking `/commit-push` with `--select` or explicit `@file` args will NOT re-include the filtered file — the filter is deliberately absolute as a safety invariant, and no flag overrides it.
+   - List any excluded files explicitly in your reply so the user knows what was omitted. For false positives (e.g., a genuine test fixture whose filename matches the secret pattern), the workarounds are: rename the file, adjust the filter rules above, or commit manually outside this skill. No flag re-includes a filtered file.
 
    **c) Commit-count mode**:
    - **Single-commit mode** if any of the following:
@@ -80,7 +80,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    - Once every candidate file is assigned → step 5 with the user-defined groups in creation order.
 
 5. **Per-commit loop**. For each group (in order). Each iteration creates a NEW commit:
-   1. Clear the index: `git restore --staged :/` (Git 2.23+ form, preferred over the legacy `git reset HEAD` to avoid confusion with `git reset --hard`; `git reset HEAD` still works on older Git). The `:/` magic pathspec anchors to the repo root so the entire index is cleared regardless of the caller's current working directory — do NOT use bare `git restore --staged .`, which is CWD-relative and would leave staged files outside the current subtree untouched. Then stage only this group's files via `git add <file>...`. Prefer explicit file args; never `git add -A` or `git add .`. The candidate set has already passed the secret filter (step 2b), so no further secret check is needed here.
+   1. Clear the index: `git restore --staged :/` (the `:/` pathspec anchors to the repo root so this is CWD-independent; `git reset HEAD` is an acceptable fallback on older Git). Do not use bare `git restore --staged .` — it's CWD-relative and leaves staged files outside the current subtree. Then stage only this group's files via `git add <file>...`. Prefer explicit file args; never `git add -A` or `git add .`. The candidate set has already passed the secret filter (step 2b), so no further secret check is needed here.
    2. Draft an Angular-style commit message:
       - **Format:** `type(scope): subject` with a body of bullet-point details.
       - **Types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `style`, `build`, `ci`, `chore`.
@@ -108,7 +108,7 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
        - `MD <path>` → ` D <path>` (unstaging drops the index mod; worktree is still missing the file, which becomes an unstaged deletion relative to HEAD).
        - `AD <path>` → **line dropped entirely** (HEAD has no entry, unstaging removes the index entry, worktree has no file — the path ceases to exist anywhere, so it disappears from post-loop porcelain).
 
-     Treat each normalized line as part of the snapshot, matching by *both* path and indicator. Without this normalization a user who ran `git add fileA` (or `git mv`/`git add <new>`) before invoking `/commit-push --select fileB` would see the pre-loop entry transform into its unstaged form after step 5.1's index clear, get flagged as delta, and trigger a spurious warn branch — and the noise is worse for renames/copies where a single pre-loop entry fans out into two post-loop entries with entirely different path + indicator combinations.
+     Treat each normalized line as part of the snapshot, matching by *both* path and indicator.
    - **After** the loop completes, compute the *delta* against the snapshot using this two-part rule:
      - **Candidate-set files** (files from the post-filter candidate set — step 2a's file scoping intersected with step 2b's secret filter, i.e., what the per-commit loop actually committed): any file from the candidate set that shows an unstaged change in post-loop `git status --porcelain` is residue, regardless of its pre-loop status. Every candidate file was staged and committed during the loop, so any non-clean state afterward is necessarily hook-introduced — this catches the case where a file was `M` pre-loop, committed mid-loop (momentarily clean), and then re-dirtied by a repo-wide hook running on a *later* group's commit (both the pre-loop and post-loop `git status` lines look the same — ` M <path>` — but the content was committed in between).
      - **Non-candidate files**: only those whose status indicator *changed* from the snapshot or that *newly appeared* as unstaged count as delta. Files that were already dirty pre-loop and remain identically dirty post-loop are the user's pre-existing unrelated work and must not be touched.
