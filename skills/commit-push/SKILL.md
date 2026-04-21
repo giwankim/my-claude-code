@@ -57,12 +57,14 @@ Trade-off: **also authorizes** `git push --force`, `git push --force-with-lease`
 
 **Caveat: you cannot reliably re-gate destructive push forms with a `deny` list under prefix-glob matching.** An earlier version of this section recommended adding `Bash(git push --force:*)`, `Bash(git push -f:*)`, and `Bash(git push --delete:*)` to `permissions.deny` to carve out destructive variants from Option B's allow wildcard. That recipe is **leaky** and should not be trusted: prefix-glob entries anchor at the start of the command string, so they only match *flag-first* forms. Git accepts the same flags in remote-first form:
 
-```
+```text
 git push origin --delete feature/delete-me      # not matched by Bash(git push --delete:*)
 git push origin --force-with-lease HEAD:main    # not matched by Bash(git push --force:*)
 git push origin --force main                    # not matched by Bash(git push --force:*)
-git push -f origin main                         # not matched by Bash(git push -f:*) (the matcher requires -f to be the final arg segment before the wildcard, not mid-command)
+git push origin main -f                         # not matched by Bash(git push -f:*)
 ```
+
+(The flag-first forms `git push --force ...`, `git push --delete ...`, and `git push -f ...` *are* caught by the corresponding deny entries, because those commands do start with the deny prefix. It's only when the remote argument comes first — which git accepts everywhere — that the prefix-glob fails to match.)
 
 These remote-first commands match `Bash(git push:*)` allow and bypass the deny entries entirely — the destructive push goes through without prompt. There is no prefix-glob pattern that catches `--force` / `--delete` / `-f` at arbitrary argument positions, because the matcher doesn't parse flags.
 
