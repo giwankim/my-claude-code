@@ -364,7 +364,7 @@
         "The skill's reply explicitly classifies the rejection as a PreToolUse hook rejection (mentions 'hook', 'PreToolUse', or references the hook's stderr reason) — not as a permission-allowlist denial",
         "The reply surfaces the hook's rejection reason / stderr where available",
         "The reply tells the user to audit `hooks.PreToolUse` entries in project `.claude/settings.json` or user `~/.claude/settings.json` and adjust / remove / scope down the matcher that rejects `Bash(git push ...)`",
-        "The reply does NOT emit the Option A `permissions.allow` snippet (`Bash(git push)`, `Bash(git push -u origin HEAD)`) as the primary fix — adding an allow entry does not unblock a hook rejection. An ambiguous reply that mentions Option A as a fallback 'in case the hook is actually an allowlist issue' is acceptable ONLY if the primary guidance is hook-audit.",
+        "The reply does NOT emit the Option A `permissions.allow` snippet (`Bash(git push)`, `Bash(git push -u origin HEAD)`) at all — per SKILL.md step 7a's hook-branch rule, allow entries are off-topic for a hook rejection and must not be shown. The error text in this scenario unambiguously names the hook (`PreToolUse hook rejected: git push blocked by repository policy`), so the ambiguous-branch Option-A-as-hedge exception does not apply.",
         "The reply tells the user to re-invoke /commit-push after adjusting the hook configuration",
         "The reply does NOT instruct the user to run `git push` themselves in a terminal",
         "No local commits were rolled back, amended, or discarded as part of the hook-rejection-handling flow"
