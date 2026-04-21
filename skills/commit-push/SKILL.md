@@ -16,7 +16,7 @@ This skill ends with `git push`. If the Claude Code environment denies that call
 
 Which you want depends on how much destructive-push friction you're willing to accept. Pick one of the two below.
 
-**Merge, don't replace.** The snippets below show the entries to *add* to your existing `permissions.allow` array. Most users already have a populated `settings.json`; pasting a top-level `{ "permissions": ... }` object as a whole-file replacement would clobber existing settings (or produce invalid JSON if pasted inline next to an existing top-level object). Merge these entries into the existing array. If your `settings.json` is empty or has no `permissions` key at all, the whole-file fallback form is shown at the end of each option.
+**Merge, don't replace.** The snippets below show the entries to *add* to your existing `permissions.allow` array. Most users already have a populated `settings.json`; pasting a top-level `{ "permissions": ... }` object as a whole-file replacement would clobber existing settings (or produce invalid JSON if pasted inline next to an existing top-level object). Merge these entries into the existing array. The whole-file fallback form at the end of each option is safe **only** when the target `settings.json` does not exist yet or is empty (`{}`). A file that has *any* top-level keys — even unrelated ones like `hooks`, `env`, `model`, or `statusLine` — must be merged, not replaced; a whole-file paste would drop every sibling key. "No `permissions` key yet" is **not** a sufficient condition for the whole-file form.
 
 ### Option A — narrow (exact-match; recommended for most users)
 
@@ -29,7 +29,7 @@ Add these entries to `permissions.allow`:
 "Bash(git push -u origin HEAD)"
 ```
 
-Whole-file fallback (only if the file has no `permissions` key yet):
+Whole-file fallback (only if `settings.json` does not exist yet or is `{}` — see the merge-don't-replace note above for why "no `permissions` key yet" is not the right condition):
 
 ```json
 { "permissions": { "allow": ["Bash(git push)", "Bash(git push -u origin HEAD)"] } }
@@ -47,36 +47,26 @@ Add this entry to `permissions.allow`:
 "Bash(git push:*)"
 ```
 
-Whole-file fallback (only if the file has no `permissions` key yet):
+Whole-file fallback (only if `settings.json` does not exist yet or is `{}`):
 
 ```json
 { "permissions": { "allow": ["Bash(git push:*)"] } }
 ```
 
-Trade-off: **also authorizes** `git push --force`, `git push --force-with-lease`, `git push --delete <ref>`, etc. Use only if you want push-in-general to be friction-free and trust the skill (and yourself) not to misuse it. If you want the wildcard but still want destructive variants prompt-gated, layer a `deny` entry. Merge-form:
+Trade-off: **also authorizes** `git push --force`, `git push --force-with-lease`, `git push --delete <ref>`, etc. Use only if you want push-in-general to be friction-free and trust the skill (and yourself) not to misuse it.
 
-```json
-// in permissions.allow:
-"Bash(git push:*)"
+**Caveat: you cannot reliably re-gate destructive push forms with a `deny` list under prefix-glob matching.** An earlier version of this section recommended adding `Bash(git push --force:*)`, `Bash(git push -f:*)`, and `Bash(git push --delete:*)` to `permissions.deny` to carve out destructive variants from Option B's allow wildcard. That recipe is **leaky** and should not be trusted: prefix-glob entries anchor at the start of the command string, so they only match *flag-first* forms. Git accepts the same flags in remote-first form:
 
-// in permissions.deny (create the key if it doesn't exist):
-"Bash(git push --force:*)",
-"Bash(git push -f:*)",
-"Bash(git push --delete:*)"
+```
+git push origin --delete feature/delete-me      # not matched by Bash(git push --delete:*)
+git push origin --force-with-lease HEAD:main    # not matched by Bash(git push --force:*)
+git push origin --force main                    # not matched by Bash(git push --force:*)
+git push -f origin main                         # not matched by Bash(git push -f:*) (the matcher requires -f to be the final arg segment before the wildcard, not mid-command)
 ```
 
-Whole-file fallback:
+These remote-first commands match `Bash(git push:*)` allow and bypass the deny entries entirely — the destructive push goes through without prompt. There is no prefix-glob pattern that catches `--force` / `--delete` / `-f` at arbitrary argument positions, because the matcher doesn't parse flags.
 
-```json
-{
-  "permissions": {
-    "allow": ["Bash(git push:*)"],
-    "deny":  ["Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git push --delete:*)"]
-  }
-}
-```
-
-Claude Code evaluates `deny` before `allow`, so a matched deny entry re-gates the destructive variant even though the allow wildcard would otherwise match. Note that `Bash(git push --force:*)` is a prefix glob — it also covers `git push --force-with-lease ...`, so no separate deny entry is needed for that variant. `Bash(git push -f:*)` covers the short alias.
+**If you need destructive-push gating, use Option A** and explicitly list the non-destructive ref-pushing forms you use (e.g., add `Bash(git push origin main)` and `Bash(git push origin <other-branch>)` as needed). Option A's exact-match entries authorize only the literal commands you list, so `git push --force` and any other unlisted form remain permission-gated by default — no deny list needed.
 
 ### If you leave this out
 
@@ -89,7 +79,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
    **1a. Push-only fast path.** If `git status` reports a clean working tree, inspect the branch's relationship to its upstream and pick a branch:
 
    - **Branch has upstream and is ahead** (status line `Your branch is ahead of 'origin/<branch>' by N commit(s).`): skip steps 2–6 entirely and jump to step 7 to push the unpushed commits. This is the normal recovery after a step 7a push denial on a tracked branch: the user added the permissions entry from step 7a, re-invoked `/commit-push`, and the local commits are already there — only the push needs to run.
-   - **Branch has no upstream configured** (verify with `git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null`; the command fails when no upstream is set). Treat this as a **first-push recovery** path: skip steps 2–6 and jump to step 7, which will detect the missing upstream and push with `git push -u origin HEAD` to establish tracking and publish the branch in one step. This is the recovery path for the common case where the *initial* `git push` in a prior `/commit-push` run was denied before upstream was ever set — re-invocation on a clean tree must not exit silently, because the local commits are still stranded on the client.
+   - **Branch has no upstream configured** (verify with `git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null`; the command fails when no upstream is set). Compute the count of commits that this branch would newly publish to origin via `git rev-list --count HEAD --not --remotes=origin` (commits reachable from HEAD but not from any `refs/remotes/origin/*` ref). **If the count is `0`**, the branch has nothing unique to publish — every commit on HEAD already exists on some origin ref. Exit without pushing; report the state clearly (e.g., *"clean working tree; no commits unique to origin — nothing to publish"*) so the user understands why. Creating `origin/<branch>` in this case would pollute the remote with an empty branch pointing at the same SHA as an existing ref, which is worse than a silent exit. **If the count is `>0`**, treat this as a **first-push recovery** path: skip steps 2–6 and jump to step 7, which will push with `git push -u origin HEAD` to establish tracking and publish the unique commits in one step. This is the recovery path for the common case where the *initial* `git push` in a prior `/commit-push` run was denied before upstream was ever set — re-invocation on a clean tree with real commits must not exit silently, because those commits are still stranded on the client.
    - **Branch has upstream but is behind, diverged, or up-to-date**: there is nothing to push. Report the clean state and exit, propagating the relevant `git status` line — e.g., `Your branch is behind 'origin/<branch>' by N commit(s).` (user may want to pull before starting new work) or `branches diverged` (likely needs rebase/merge) — so the user isn't left guessing why the skill exited silently. This skill does not pull, rebase, or set upstream on the user's behalf.
 
 2. **Pre-flight**: determine the candidate file set, apply the secret filter, and pick a commit-count mode — three independent concerns, intentionally decoupled so overrides can't bypass the secret filter.
@@ -201,7 +191,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
 
 7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch. Emit a one-line summary **immediately before** invoking the push, in the form: `→ pushing <N> commit(s) to <remote>/<branch>` (a single push for the whole batch, regardless of how many commits were created).
 
-   **Computing N.** When the branch has an upstream, use `git rev-list --count @{u}..HEAD` (commits ahead of upstream). When the branch has **no** upstream (step 1a's first-push recovery path), `@{u}` is unresolvable, so use `git rev-list --count HEAD --not --remotes` instead — commits present locally but absent from *any* remote tracking branch; this is the count that the forthcoming `git push -u origin HEAD` will actually publish. If no remote tracking refs exist at all (a repo freshly `git init`ed with only a manually-added remote URL), that count collapses to `git rev-list --count HEAD` — an acceptable fallback since every local commit is net-new to the remote in that case.
+   **Computing N.** When the branch has an upstream, use `git rev-list --count @{u}..HEAD` (commits ahead of upstream). When the branch has **no** upstream (step 1a's first-push recovery path), `@{u}` is unresolvable, so use `git rev-list --count HEAD --not --remotes=origin` instead — commits present locally but absent from every `refs/remotes/origin/*` ref. This scopes the count to *the remote being pushed to* (origin), not to every remote-tracking ref in the repo. The distinction matters in multi-remote setups: a branch based on `upstream/feature/source` in a fork workflow has zero commits unique to `upstream` but may have many commits unique to `origin`, and it's the origin-unique count that matches what `git push -u origin HEAD` will actually publish. A bare `--not --remotes` (without `=origin`) would exclude commits present on *any* remote and report `0` in that case, misstating the push. If no `origin/*` refs exist at all (a repo freshly `git init`ed with a manually-added remote URL but nothing fetched), the count collapses to `git rev-list --count HEAD` — every local commit is net-new to origin in that case.
 
    **Choose the push command based on upstream state.** If the current branch already has an upstream (`git rev-parse --abbrev-ref --symbolic-full-name @{u}` succeeds), run bare `git push`. If it does **not** (the command fails / no upstream configured), run `git push -u origin HEAD` instead — this publishes the branch and establishes tracking in one call, and handles both the routine first-push case and the first-push recovery path from step 1a. Do not run bare `git push` on a no-upstream branch; it will fail with `fatal: The current branch ... has no upstream branch` and leave the user in exactly the kind of blocked state step 7a exists to avoid.
 
@@ -220,7 +210,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
      "Bash(git push)",
      "Bash(git push -u origin HEAD)"
      ```
-     Tell the user to merge these into the `permissions.allow` array in `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level). If the file has no `permissions` key at all, the minimal wrapper from the Permissions section is `{ "permissions": { "allow": ["Bash(git push)", "Bash(git push -u origin HEAD)"] } }` — but emit this whole-file form **only** when the skill can confirm the target file is empty or lacks a `permissions` key, because pasting a second top-level `permissions` key produces invalid JSON and silently clobbering an existing `settings.json` is strictly worse than a merge instruction the user applies manually.
+     Tell the user to merge these into the `permissions.allow` array in `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level). If the file does not exist yet or is `{}`, the minimal wrapper from the Permissions section is `{ "permissions": { "allow": ["Bash(git push)", "Bash(git push -u origin HEAD)"] } }` — but emit this whole-file form **only** when the skill can confirm the target file is absent or empty. "Has no `permissions` key yet" is insufficient: a file with other top-level keys (e.g., `hooks`, `env`, `model`) would be silently clobbered by a whole-file paste even though it lacks `permissions`. When in doubt, emit the merge-form fragment and let the user apply it manually.
    - After the emit, tell the user: *"Once you've added the entry (or adjusted the hook) and the settings reload, re-invoke `/commit-push` — the per-group commits are already on your local branch, and step 1a's push-only fast path will push them without re-running the commit steps."* The already-created commits remain on the branch unchanged; nothing is rolled back, amended, or discarded.
 
 8. **Report** the outcome:

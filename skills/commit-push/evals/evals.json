@@ -313,7 +313,7 @@
         "Exactly 1 new commit was created and remains on the local branch",
         "The skill attempted `git push` exactly once (no loop-retry in the same turn)",
         "The skill's reply explicitly classifies the rejection as a permission-allowlist / sandbox denial (not a PreToolUse hook rejection)",
-        "The reply emits the Option A snippet as a merge-form fragment (two bare string entries `\"Bash(git push)\"` and `\"Bash(git push -u origin HEAD)\"` intended to be added to the existing `permissions.allow` array), NOT as a top-level `{ \"permissions\": { \"allow\": [...] } }` whole-file JSON object. A whole-file form is acceptable ONLY if the reply also explicitly notes it applies only when the target `settings.json` has no `permissions` key yet.",
+        "The reply emits the Option A snippet as a merge-form fragment (two bare string entries `\"Bash(git push)\"` and `\"Bash(git push -u origin HEAD)\"` intended to be added to the existing `permissions.allow` array), NOT as a top-level `{ \"permissions\": { \"allow\": [...] } }` whole-file JSON object. A whole-file form is acceptable ONLY if the reply also explicitly restricts it to the case where the target `settings.json` does not exist or is empty — NOT merely 'has no permissions key', because a file with other top-level keys like `hooks` would be clobbered by a whole-file replacement even though it lacks `permissions`.",
         "Option B's prefix-match wildcard (`Bash(git push:*)`) is mentioned by pointer to the Permissions section but NOT emitted inline as a copy-pasteable snippet (emitting Option B inline would violate SKILL.md step 7a's 'do not emit Option B inline unless the user asks' rule).",
         "The reply tells the user to re-invoke /commit-push after merging the settings entry (so the already-created local commits get pushed on the next run via step 1a's push-only fast path)",
         "The reply does NOT contain the phrases 'run git push manually', 'type git push yourself', 'execute `git push` in your terminal', or any equivalent instruction directing the user to shell out to run the push themselves",
@@ -368,6 +368,21 @@
         "The reply tells the user to re-invoke /commit-push after adjusting the hook configuration",
         "The reply does NOT instruct the user to run `git push` themselves in a terminal",
         "No local commits were rolled back, amended, or discarded as part of the hook-rejection-handling flow"
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "Setup: in a scratch git repo with at least one initial commit on `main` and a configured `origin` remote (`origin/main` fetched and present as a remote-tracking ref), create and check out a brand-new branch off `main` via `git checkout -b feature/empty`. Do NOT make any new commits on the branch. Do NOT set an upstream. Working tree must be clean. Pre-invocation `git rev-list --count HEAD --not --remotes=origin` must return `0` — every commit on the branch is already present on some `origin/*` ref. Then invoke: /commit-push",
+      "expected_output": "The skill detects step 1a's clean-tree + no-upstream state, computes that there are zero commits unique to origin (N == 0 via `git rev-list --count HEAD --not --remotes=origin`), and exits WITHOUT running `git push`. The reply reports the empty-branch state clearly — e.g., 'clean working tree; no commits unique to origin — nothing to publish' — so the user understands why nothing happened. Verifies the N == 0 guard on the no-upstream first-push recovery path, preventing the regression where `/commit-push` would silently create an empty `origin/<branch>` with the same tip as an existing origin ref.",
+      "files": [],
+      "expectations": [
+        "Pre-invocation: `git status` reports a clean working tree AND `git rev-parse --abbrev-ref --symbolic-full-name @{u}` fails (no upstream configured) AND `git rev-list --count HEAD --not --remotes=origin` is `0`",
+        "The skill did NOT run `git push` (no `git push` Bash call, no `git push -u origin HEAD`, no bare `git push`)",
+        "The skill did NOT create any new commits (HEAD SHA after == HEAD SHA before)",
+        "The skill did NOT run `git add`, `git commit`, or any staging/commit Bash call",
+        "The skill did NOT invoke AskUserQuestion at any point",
+        "Post-invocation: the branch does NOT exist on origin (`git ls-remote origin refs/heads/feature/empty` returns nothing, OR if a prior unrelated origin ref already existed there, its SHA is unchanged)",
+        "The skill's reply explicitly explains that there are no commits unique to origin / nothing to publish — not a generic 'nothing to do' message, and not a claim that a push succeeded"
       ]
     }
   ]
