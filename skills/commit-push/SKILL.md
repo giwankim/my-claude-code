@@ -5,6 +5,18 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
 
 # Commit and Push
 
+## Permissions (one-time setup)
+
+This skill ends with `git push`. If the Claude Code environment denies that call — common configurations: `defaultMode: "plan"`, `skipAutoPermissionPrompt: true`, strict sandboxes like Conductor — add a scoped permission rule once and the denial never fires again. In `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level):
+
+```json
+{ "permissions": { "allow": ["Bash(git push)", "Bash(git push origin)", "Bash(git push origin HEAD)"] } }
+```
+
+Intentionally narrow. These entries do **not** authorize `git push --force`, `git push --force-with-lease`, or pushes to arbitrary refs — those remain permission-gated, which is the right default for destructive operations. Do not collapse to a wildcard like `Bash(git push:*)`; the point is to keep destructive pushes prompt-guarded.
+
+If per-push explicit approval is preferred, leave this out — but note that environments with `skipAutoPermissionPrompt: true` silently deny rather than prompting, so in those environments either this `allow` entry or flipping `skipAutoPermissionPrompt` off is required for the push to succeed without shell-out.
+
 ## Workflow
 
 1. Run `git status` (never use `-uall`), `git diff HEAD`, and `git log --oneline -5` in parallel.
@@ -116,8 +128,21 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
    - If the delta contains only files that were also in the post-filter candidate set (step 2a's scoping ∩ step 2b's secret filter): stage just the delta files (`git add <delta-file>...`) and create one final commit, typically `chore(commit-push): reconcile hook auto-fixes` (use `style:` if purely formatting, or `fix:` if the hook actually fixed bugs — match the diff). Mention this commit explicitly in your reply so the user understands why an extra commit appeared and can keep/squash/split it.
    - If the delta contains files *outside* the original candidate set (a hook touched files the user wasn't trying to commit): warn the user and let them decide — do NOT auto-stage these. They may want to stash them, commit them separately under a different intent, or verify the hook's behavior. Auto-committing files the user didn't include in their candidate set would violate the principle that the skill only commits files the user opted in to.
 
-7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch: `git push`. (Single push for the whole batch, regardless of how many commits were created.) **Skip the push if step 5.4c fired** — earlier successful commits stay local so the user can inspect, amend, or cherry-pick before deciding whether to push. Pushing a partial batch would surface the leading groups to origin while silently dropping the failed group, violating the atomic-batch invariant this skill otherwise enforces.
+7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch. Emit a one-line summary **immediately before** invoking `git push`, in the form: `→ pushing <N> commit(s) to <remote>/<branch>` (a single push for the whole batch, regardless of how many commits were created). Then call `git push` directly. Do **not** wrap the push in `AskUserQuestion` to "confirm" first — `AskUserQuestion` is a conversation-layer tool and cannot authorize a `Bash(git push ...)` call, so using it as a pre-push confirmation just doubles the prompt count without improving safety. The summary above is what gives the user (and the permission layer) context about what is about to happen. **Skip the push if step 5.4c fired** — earlier successful commits stay local so the user can inspect, amend, or cherry-pick before deciding whether to push. Pushing a partial batch would surface the leading groups to origin while silently dropping the failed group, violating the atomic-batch invariant this skill otherwise enforces.
+
+   **7a. If `git push` is denied by the permission layer** (silent denial under `skipAutoPermissionPrompt: true`, sandbox rule, explicit hook block, or any "tool use was rejected" error):
+
+   - **Do NOT tell the user to run `git push` themselves in a terminal.** Manual shell-out is the UX this workflow exists to avoid; instructing the user to shell out defeats the whole point of committing-and-pushing as one action.
+   - **Do NOT loop-retry the push in the same turn.** The permission layer's state does not change mid-session; a second identical call will fail identically. One clean failure report is better than three.
+   - Instead, report the denial clearly and emit the exact Permissions-section JSON snippet verbatim so the user can copy-paste it into `~/.claude/settings.json` or project `.claude/settings.json`. Tell them: *"Once you've added the entry and the settings reload, re-invoke `/commit-push` — the per-group commits are already on your local branch; only the push needs to be re-run."* The already-created commits remain on the branch unchanged; nothing is rolled back, amended, or discarded. On re-invocation, fresh `git status`/`git diff` output will show a clean working tree and the existing commits will be ahead of origin, so `/commit-push` will naturally push them.
 
 8. **Report** the outcome:
    - **On success**: list all commit SHAs created in this run, one per line (per-group commits in loop order, followed by the reconciliation commit if any).
    - **On abort from step 5.4c**: list the successful SHAs created before the abort (one per line), then a clear failure block: the failing group's scope name + files, the hook's stderr output (the last `git commit` stderr), the list of groups that never got their turn (unprocessed), and explicit guidance — *"Fix the hook error manually and re-invoke `/commit-push`. The earlier successful commits are still on your local branch but were not pushed; they'll be preserved and the remaining groups will be picked up fresh on re-invocation."*
+   - **On push denial from step 7a**: list the successful commit SHAs (all of them — they exist on the local branch), then a clear permission-denial block: "`git push` was denied by the permission layer", the exact `settings.json` snippet from the Permissions section above (copy-pasteable), and the re-invocation instruction from step 7a. **Do not include any phrasing that directs the user to run `git push` themselves in their shell** — that's the anti-pattern step 7a is built to prevent.
+
+## Anti-pattern: do not use `AskUserQuestion` for push permission, and do not fall back to "please run `git push` yourself"
+
+`AskUserQuestion` is a conversation tool and cannot pre-authorize a `Bash(git push ...)` call under any permission mode, sandbox configuration, or hook setup. Using it as a pre-push confirmation produces redundant prompts and has zero effect on whether the push actually succeeds — the permission layer still evaluates the Bash call independently. The one-line summary in step 7 is the correct way to give the user (and the permission layer's prompt, where it exists) context about what's about to happen.
+
+Equally: if the push is denied, **do not** tell the user to run `git push` in their own terminal. Manual shell-out as a fallback defeats the point of commit-and-push being a single workflow, and it treats a fixable configuration issue (missing permission entry) as a workflow dead-end. The correct response to any permission-layer denial is step 7a: report the denial, emit the Permissions snippet, instruct re-invocation. The already-created local commits are the unit of work that gets pushed on re-invocation.

@@ -288,6 +288,34 @@
         "The reply lists the spring-init commit SHA (the one successful commit)",
         "Exit behavior is a clean abort, not a hang or infinite retry loop"
       ]
+    },
+    {
+      "id": 22,
+      "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (single group, no split). Then invoke: /commit-push",
+      "expected_output": "Skill emits a one-line pre-push summary (format: `→ pushing 1 commit to origin/<branch>` or close variant) IMMEDIATELY before invoking `git push`, and does NOT invoke AskUserQuestion specifically to confirm the push. Verifies step 7's summary + no-AskUserQuestion-for-push-permission guarantee.",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created with scope (spring-init)",
+        "git push ran exactly once",
+        "Before running git push, the skill emitted a one-line summary naming the branch and the number of commits being pushed (e.g., `→ pushing 1 commit to origin/<branch>`)",
+        "The skill did NOT invoke AskUserQuestion with a question whose purpose is to confirm the push action (e.g., 'Should I push?', 'Push now?', 'Confirm push'). Unrelated AskUserQuestion uses from earlier steps, if any, are out of scope for this assertion.",
+        "Reported output includes the commit SHA"
+      ]
+    },
+    {
+      "id": 23,
+      "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (single group). Configure the invocation environment so that Bash(git push ...) calls are denied by the permission layer (e.g., `skipAutoPermissionPrompt: true` + no matching allow rule, or an explicit PreToolUse hook that denies git push). The local commit machinery should still succeed. Then invoke: /commit-push",
+      "expected_output": "The per-group commit succeeds and stays on the local branch. The `git push` call is denied by the permission layer. The skill reports the denial, emits the exact Permissions-section JSON snippet for `permissions.allow` covering `Bash(git push)` / `Bash(git push origin)` / `Bash(git push origin HEAD)`, tells the user to re-invoke /commit-push after adding the entry, and does NOT instruct the user to run `git push` themselves in a terminal. Verifies step 7a's denial-handling branch and the anti-pattern note forbidding manual-shell-out fallback.",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created and remains on the local branch",
+        "The skill attempted `git push` exactly once (no loop-retry in the same turn)",
+        "The skill's reply explicitly reports that the push was denied by the permission layer",
+        "The reply contains a JSON snippet showing `permissions.allow` with entries covering at least `Bash(git push)` (scoped entries like `Bash(git push origin)` and `Bash(git push origin HEAD)` are acceptable additions; a bare wildcard `Bash(git push:*)` is NOT acceptable)",
+        "The reply tells the user to re-invoke /commit-push after adding the settings entry (so the already-created local commits get pushed on the next run)",
+        "The reply does NOT contain the phrases 'run git push manually', 'type git push yourself', 'execute `git push` in your terminal', or any equivalent instruction directing the user to shell out to run the push themselves",
+        "No local commits were rolled back, amended, or discarded as part of the denial-handling flow"
+      ]
     }
   ]
 }
