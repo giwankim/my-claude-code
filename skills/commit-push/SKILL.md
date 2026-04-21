@@ -40,12 +40,12 @@ Trade-off: **also authorizes** `git push --force`, `git push --force-with-lease`
 {
   "permissions": {
     "allow": ["Bash(git push:*)"],
-    "deny":  ["Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git push --force-with-lease:*)", "Bash(git push --delete:*)"]
+    "deny":  ["Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git push --delete:*)"]
   }
 }
 ```
 
-Claude Code evaluates `deny` before `allow`, so a matched deny entry re-gates the destructive variant even though the allow wildcard would otherwise match.
+Claude Code evaluates `deny` before `allow`, so a matched deny entry re-gates the destructive variant even though the allow wildcard would otherwise match. Note that `Bash(git push --force:*)` is a prefix glob — it also covers `git push --force-with-lease ...`, so no separate deny entry is needed for that variant. `Bash(git push -f:*)` covers the short alias.
 
 ### If you leave this out
 
@@ -55,7 +55,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
 
 1. Run `git status` (never use `-uall`), `git diff HEAD`, and `git log --oneline -5` in parallel.
 
-   **1a. Push-only fast path.** If `git status` reports a clean working tree **and** also reports that the branch is ahead of its upstream (e.g., the line `Your branch is ahead of 'origin/<branch>' by N commit(s).` in the status output), skip steps 2–6 entirely and jump to step 7 to push the unpushed commits. This is the normal recovery after a step 7a push denial: the user added the permissions entry from step 7a, re-invoked `/commit-push`, and the local commits are already there — only the push needs to run. If `git status` is clean and the branch is **not** ahead of its upstream (or has no upstream), there is nothing to do: report that the working tree is clean and exit.
+   **1a. Push-only fast path.** If `git status` reports a clean working tree **and** also reports that the branch is ahead of its upstream (e.g., the line `Your branch is ahead of 'origin/<branch>' by N commit(s).` in the status output), skip steps 2–6 entirely and jump to step 7 to push the unpushed commits. This is the normal recovery after a step 7a push denial: the user added the permissions entry from step 7a, re-invoked `/commit-push`, and the local commits are already there — only the push needs to run. If `git status` is clean and the branch is **not** ahead of its upstream, there is nothing to push; report the clean state and exit. Propagate any other relevant state from `git status` into the exit message — e.g., `Your branch is behind 'origin/<branch>' by N commit(s).` (user may want to pull before starting new work), `branches diverged` (likely needs rebase/merge), or `no upstream configured` (first push will need `-u origin HEAD`) — so the user isn't left guessing why the skill exited silently. This skill does not pull, rebase, or set upstream on the user's behalf.
 
 2. **Pre-flight**: determine the candidate file set, apply the secret filter, and pick a commit-count mode — three independent concerns, intentionally decoupled so overrides can't bypass the secret filter.
 
