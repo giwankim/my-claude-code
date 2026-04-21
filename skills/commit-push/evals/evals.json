@@ -298,7 +298,7 @@
         "Exactly 1 new commit was created with scope (spring-init)",
         "git push ran exactly once",
         "Before running git push, the skill emitted a one-line summary naming the branch and the number of commits being pushed (e.g., `→ pushing 1 commit to origin/<branch>`)",
-        "The skill did NOT invoke AskUserQuestion with a question whose purpose is to confirm the push action (e.g., 'Should I push?', 'Push now?', 'Confirm push'). Unrelated AskUserQuestion uses from earlier steps, if any, are out of scope for this assertion.",
+        "No AskUserQuestion call was made between the pre-push summary line and the `git push` Bash call. Unrelated AskUserQuestion uses from earlier workflow steps (e.g., split proposal, custom-groupings picker) are out of scope — the assertion is strictly positional.",
         "Reported output includes the commit SHA"
       ]
     },
@@ -311,10 +311,26 @@
         "Exactly 1 new commit was created and remains on the local branch",
         "The skill attempted `git push` exactly once (no loop-retry in the same turn)",
         "The skill's reply explicitly reports that the push was denied by the permission layer",
-        "The reply contains a JSON snippet showing `permissions.allow` with entries covering at least `Bash(git push)` (scoped entries like `Bash(git push origin)` and `Bash(git push origin HEAD)` are acceptable additions; a bare wildcard `Bash(git push:*)` is NOT acceptable)",
+        "The reply contains a JSON snippet for `permissions.allow` that authorizes the skill's `git push` invocation. Acceptable shapes: (a) Option A exact-match entries including at least `Bash(git push)` (and optionally `Bash(git push -u origin HEAD)`), OR (b) Option B prefix-match wildcard `Bash(git push:*)`, optionally paired with a `deny` list for force variants. If the wildcard is used without a deny, the reply must explicitly flag that it also authorizes destructive `--force` pushes.",
         "The reply tells the user to re-invoke /commit-push after adding the settings entry (so the already-created local commits get pushed on the next run)",
         "The reply does NOT contain the phrases 'run git push manually', 'type git push yourself', 'execute `git push` in your terminal', or any equivalent instruction directing the user to shell out to run the push themselves",
         "No local commits were rolled back, amended, or discarded as part of the denial-handling flow"
+      ]
+    },
+    {
+      "id": 24,
+      "prompt": "Setup: in a scratch git repo with at least one prior commit, a configured `origin` remote, and a branch that tracks `origin/<branch>`, create one new local commit (any content) so that `git status` reports a clean working tree AND a `Your branch is ahead of 'origin/<branch>' by 1 commit.` line. No uncommitted changes — no modifications, no staged files, no untracked files. Then invoke: /commit-push",
+      "expected_output": "The skill detects the clean-tree + branch-ahead state in step 1a, skips steps 2–6 entirely (no candidate-set computation, no split proposal, no commits created), emits the pre-push summary line, and pushes the existing local commit. Verifies step 1a's push-only fast path — the normal recovery path after a step 7a push denial when the user has since added the permissions entry and re-invoked /commit-push.",
+      "files": [],
+      "expectations": [
+        "Pre-invocation `git status` shows a clean working tree AND a 'Your branch is ahead of origin/<branch> by N commit(s)' line",
+        "The skill did NOT create any new commits during the invocation (HEAD SHA after the run == HEAD SHA before the run)",
+        "The skill did NOT run `git add`, `git commit`, or any staging/commit Bash call",
+        "The skill did NOT invoke AskUserQuestion at any point (no split proposal, no picker — step 1a bypasses those steps)",
+        "The skill emitted a pre-push summary line (`→ pushing N commit(s) to origin/<branch>`) before running `git push`",
+        "`git push` ran exactly once and succeeded",
+        "Post-invocation `git status` reports the branch is up-to-date with origin",
+        "The skill's reply acknowledges the fast path — e.g., 'working tree clean; pushing existing unpushed commits' — rather than reporting new commits created"
       ]
     }
   ]
