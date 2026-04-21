@@ -16,9 +16,20 @@ This skill ends with `git push`. If the Claude Code environment denies that call
 
 Which you want depends on how much destructive-push friction you're willing to accept. Pick one of the two below.
 
+**Merge, don't replace.** The snippets below show the entries to *add* to your existing `permissions.allow` array. Most users already have a populated `settings.json`; pasting a top-level `{ "permissions": ... }` object as a whole-file replacement would clobber existing settings (or produce invalid JSON if pasted inline next to an existing top-level object). Merge these entries into the existing array. If your `settings.json` is empty or has no `permissions` key at all, the whole-file fallback form is shown at the end of each option.
+
 ### Option A — narrow (exact-match; recommended for most users)
 
-Covers just the bare `git push` that step 7 invokes, plus common first-push bootstrapping. `git push --force`, `git push --force-with-lease`, and any other variant remain permission-gated:
+Covers just the bare `git push` that step 7 invokes, plus common first-push bootstrapping (`git push -u origin HEAD`). `git push --force`, `git push --force-with-lease`, and any other variant remain permission-gated.
+
+Add these entries to `permissions.allow`:
+
+```json
+"Bash(git push)",
+"Bash(git push -u origin HEAD)"
+```
+
+Whole-file fallback (only if the file has no `permissions` key yet):
 
 ```json
 { "permissions": { "allow": ["Bash(git push)", "Bash(git push -u origin HEAD)"] } }
@@ -28,13 +39,33 @@ Trade-off: does **not** authorize `git push origin main`, `git push origin <some
 
 ### Option B — broad (prefix-match wildcard)
 
-Authorizes any `git push` invocation. Simpler and covers every form in one line:
+Authorizes any `git push` invocation. Simpler and covers every form in one line.
+
+Add this entry to `permissions.allow`:
+
+```json
+"Bash(git push:*)"
+```
+
+Whole-file fallback (only if the file has no `permissions` key yet):
 
 ```json
 { "permissions": { "allow": ["Bash(git push:*)"] } }
 ```
 
-Trade-off: **also authorizes** `git push --force`, `git push --force-with-lease`, `git push --delete <ref>`, etc. Use only if you want push-in-general to be friction-free and trust the skill (and yourself) not to misuse it. If you want the wildcard but still want destructive variants prompt-gated, layer a `deny` entry:
+Trade-off: **also authorizes** `git push --force`, `git push --force-with-lease`, `git push --delete <ref>`, etc. Use only if you want push-in-general to be friction-free and trust the skill (and yourself) not to misuse it. If you want the wildcard but still want destructive variants prompt-gated, layer a `deny` entry. Merge-form:
+
+```json
+// in permissions.allow:
+"Bash(git push:*)"
+
+// in permissions.deny (create the key if it doesn't exist):
+"Bash(git push --force:*)",
+"Bash(git push -f:*)",
+"Bash(git push --delete:*)"
+```
+
+Whole-file fallback:
 
 ```json
 {
@@ -55,7 +86,11 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
 
 1. Run `git status` (never use `-uall`), `git diff HEAD`, and `git log --oneline -5` in parallel.
 
-   **1a. Push-only fast path.** If `git status` reports a clean working tree **and** also reports that the branch is ahead of its upstream (e.g., the line `Your branch is ahead of 'origin/<branch>' by N commit(s).` in the status output), skip steps 2–6 entirely and jump to step 7 to push the unpushed commits. This is the normal recovery after a step 7a push denial: the user added the permissions entry from step 7a, re-invoked `/commit-push`, and the local commits are already there — only the push needs to run. If `git status` is clean and the branch is **not** ahead of its upstream, there is nothing to push; report the clean state and exit. Propagate any other relevant state from `git status` into the exit message — e.g., `Your branch is behind 'origin/<branch>' by N commit(s).` (user may want to pull before starting new work), `branches diverged` (likely needs rebase/merge), or `no upstream configured` (first push will need `-u origin HEAD`) — so the user isn't left guessing why the skill exited silently. This skill does not pull, rebase, or set upstream on the user's behalf.
+   **1a. Push-only fast path.** If `git status` reports a clean working tree, inspect the branch's relationship to its upstream and pick a branch:
+
+   - **Branch has upstream and is ahead** (status line `Your branch is ahead of 'origin/<branch>' by N commit(s).`): skip steps 2–6 entirely and jump to step 7 to push the unpushed commits. This is the normal recovery after a step 7a push denial on a tracked branch: the user added the permissions entry from step 7a, re-invoked `/commit-push`, and the local commits are already there — only the push needs to run.
+   - **Branch has no upstream configured** (verify with `git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null`; the command fails when no upstream is set). Treat this as a **first-push recovery** path: skip steps 2–6 and jump to step 7, which will detect the missing upstream and push with `git push -u origin HEAD` to establish tracking and publish the branch in one step. This is the recovery path for the common case where the *initial* `git push` in a prior `/commit-push` run was denied before upstream was ever set — re-invocation on a clean tree must not exit silently, because the local commits are still stranded on the client.
+   - **Branch has upstream but is behind, diverged, or up-to-date**: there is nothing to push. Report the clean state and exit, propagating the relevant `git status` line — e.g., `Your branch is behind 'origin/<branch>' by N commit(s).` (user may want to pull before starting new work) or `branches diverged` (likely needs rebase/merge) — so the user isn't left guessing why the skill exited silently. This skill does not pull, rebase, or set upstream on the user's behalf.
 
 2. **Pre-flight**: determine the candidate file set, apply the secret filter, and pick a commit-count mode — three independent concerns, intentionally decoupled so overrides can't bypass the secret filter.
 
@@ -164,18 +199,36 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
    - If the delta contains only files that were also in the post-filter candidate set (step 2a's scoping ∩ step 2b's secret filter): stage just the delta files (`git add <delta-file>...`) and create one final commit, typically `chore(commit-push): reconcile hook auto-fixes` (use `style:` if purely formatting, or `fix:` if the hook actually fixed bugs — match the diff). Mention this commit explicitly in your reply so the user understands why an extra commit appeared and can keep/squash/split it.
    - If the delta contains files *outside* the original candidate set (a hook touched files the user wasn't trying to commit): warn the user and let them decide — do NOT auto-stage these. They may want to stash them, commit them separately under a different intent, or verify the hook's behavior. Auto-committing files the user didn't include in their candidate set would violate the principle that the skill only commits files the user opted in to.
 
-7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch. Emit a one-line summary **immediately before** invoking `git push`, in the form: `→ pushing <N> commit(s) to <remote>/<branch>` (a single push for the whole batch, regardless of how many commits were created). Then call `git push` directly. Do **not** wrap the push in `AskUserQuestion` to "confirm" first — `AskUserQuestion` is a conversation-layer tool and cannot authorize a `Bash(git push ...)` call, so using it as a pre-push confirmation just doubles the prompt count without improving safety. The summary above gives the user context; if the permission layer then prompts for the push, the user already knows exactly what they're authorizing. **Skip the push if step 5.4c fired** — earlier successful commits stay local so the user can inspect, amend, or cherry-pick before deciding whether to push. Pushing a partial batch would surface the leading groups to origin while silently dropping the failed group, violating the atomic-batch invariant this skill otherwise enforces.
+7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch. Emit a one-line summary **immediately before** invoking the push, in the form: `→ pushing <N> commit(s) to <remote>/<branch>` (a single push for the whole batch, regardless of how many commits were created).
 
-   **7a. If `git push` is denied by the permission layer** (silent denial under `skipAutoPermissionPrompt: true`, sandbox rule, explicit hook block, or any "tool use was rejected" error):
+   **Choose the push command based on upstream state.** If the current branch already has an upstream (`git rev-parse --abbrev-ref --symbolic-full-name @{u}` succeeds), run bare `git push`. If it does **not** (the command fails / no upstream configured), run `git push -u origin HEAD` instead — this publishes the branch and establishes tracking in one call, and handles both the routine first-push case and the first-push recovery path from step 1a. Do not run bare `git push` on a no-upstream branch; it will fail with `fatal: The current branch ... has no upstream branch` and leave the user in exactly the kind of blocked state step 7a exists to avoid.
+
+   Do **not** wrap the push in `AskUserQuestion` to "confirm" first — `AskUserQuestion` is a conversation-layer tool and cannot authorize a `Bash(git push ...)` call, so using it as a pre-push confirmation just doubles the prompt count without improving safety. The summary above gives the user context; if the permission layer then prompts for the push, the user already knows exactly what they're authorizing. **Skip the push if step 5.4c fired** — earlier successful commits stay local so the user can inspect, amend, or cherry-pick before deciding whether to push. Pushing a partial batch would surface the leading groups to origin while silently dropping the failed group, violating the atomic-batch invariant this skill otherwise enforces.
+
+   **7a. If the push is denied / rejected by Claude Code** (silent denial, sandbox rule, `PreToolUse` hook rejection, or any "tool use was rejected" style error):
 
    - **Do NOT tell the user to run `git push` themselves in a terminal.** Manual shell-out is the UX this workflow exists to avoid; instructing the user to shell out defeats the whole point of committing-and-pushing as one action.
-   - **Do NOT loop-retry the push in the same turn.** The permission layer's state does not change mid-session; a second identical call will fail identically. One clean failure report is better than three.
-   - Instead, report the denial clearly and emit the **Option A** JSON snippet from the Permissions section verbatim (exact-match, recommended default) so the user can copy-paste it into `~/.claude/settings.json` or project `.claude/settings.json`. Also point the user at the Permissions section for the Option B wildcard variant in case they'd rather authorize all `git push` forms at once (with the destructive-push trade-off that implies) — but do not emit Option B inline unless the user asks for it. Tell them: *"Once you've added the entry and the settings reload, re-invoke `/commit-push` — the per-group commits are already on your local branch, and step 1a's push-only fast path will push them without re-running the commit steps."* The already-created commits remain on the branch unchanged; nothing is rolled back, amended, or discarded.
+   - **Do NOT loop-retry the push in the same turn.** The rejection state does not change mid-session; a second identical call will fail identically. One clean failure report is better than three.
+   - **Distinguish two rejection sources — they have different fixes:**
+     - **Permission-allowlist / sandbox / `skipAutoPermissionPrompt` denial** — the error text mentions "permission", "allow rule", "allowlist", or similar, with no reference to a hook. `permissions.allow` does fix this. Emit the **Option A** merge-form fragment below verbatim; also point the user at the Permissions section above for the Option B wildcard variant (but do not emit Option B inline unless the user asks).
+     - **`PreToolUse` hook rejection** — the error text mentions "hook", "PreToolUse", or names a specific hook command that rejected the call. `permissions.allow` does **not** fix this: hooks run independently of the allowlist. Do NOT emit the Option A snippet in this case — it is off-topic and misleads the user into a wrong fix. Instead, report the hook rejection (including the hook's stderr / reason if surfaced in the error), and tell the user to audit `hooks.PreToolUse` entries in project `.claude/settings.json` or user `~/.claude/settings.json` for a matcher that rejects `Bash(git push ...)` and decide whether to remove, scope down, or exempt this repo.
+     - **Ambiguous / unknown error text** — emit Option A as the most likely fix but add a one-line note: *"If this keeps failing after you add the entry, a `PreToolUse` hook may be rejecting `git push` independently of the allowlist; check `hooks.PreToolUse` in your `settings.json`."*
+   - **Option A merge-form fragment** (safe to copy into an existing `settings.json`): show the user the entries to add to their `permissions.allow` array, not a whole-file replacement:
+     ```json
+     "Bash(git push)",
+     "Bash(git push -u origin HEAD)"
+     ```
+     Tell the user to merge these into the `permissions.allow` array in `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level). If the file has no `permissions` key at all, the minimal wrapper from the Permissions section is `{ "permissions": { "allow": ["Bash(git push)", "Bash(git push -u origin HEAD)"] } }` — but emit this whole-file form **only** when the skill can confirm the target file is empty or lacks a `permissions` key, because pasting a second top-level `permissions` key produces invalid JSON and silently clobbering an existing `settings.json` is strictly worse than a merge instruction the user applies manually.
+   - After the emit, tell the user: *"Once you've added the entry (or adjusted the hook) and the settings reload, re-invoke `/commit-push` — the per-group commits are already on your local branch, and step 1a's push-only fast path will push them without re-running the commit steps."* The already-created commits remain on the branch unchanged; nothing is rolled back, amended, or discarded.
 
 8. **Report** the outcome:
    - **On success**: list all commit SHAs created in this run, one per line (per-group commits in loop order, followed by the reconciliation commit if any).
    - **On abort from step 5.4c**: list the successful SHAs created before the abort (one per line), then a clear failure block: the failing group's scope name + files, the hook's stderr output (the last `git commit` stderr), the list of groups that never got their turn (unprocessed), and explicit guidance — *"Fix the hook error manually and re-invoke `/commit-push`. The earlier successful commits are still on your local branch but were not pushed; they'll be preserved and the remaining groups will be picked up fresh on re-invocation."*
-   - **On push denial from step 7a**: list the successful commit SHAs (all of them — they exist on the local branch), then a clear permission-denial block: "`git push` was denied by the permission layer", the **Option A** `settings.json` snippet (copy-pasteable), a one-line pointer to the Permissions section above for the Option B wildcard alternative, and the re-invocation instruction from step 7a. **Do not include any phrasing that directs the user to run `git push` themselves in their shell** — that's the anti-pattern step 7a is built to prevent.
+   - **On push rejection from step 7a**: list the successful commit SHAs (all of them — they exist on the local branch), then a clear rejection block whose content depends on which source fired per step 7a's distinguishing rule:
+     - Permission-allowlist / sandbox denial: "`git push` was denied by the permission layer", the **Option A merge-form fragment** from step 7a (entries to add to `permissions.allow` — not a whole-file replacement unless the target file is confirmed empty), a one-line pointer to the Permissions section above for the Option B wildcard alternative, and the re-invocation instruction from step 7a.
+     - `PreToolUse` hook rejection: "`git push` was rejected by a `PreToolUse` hook" + the hook's stderr / reason if available, the instruction to audit `hooks.PreToolUse` in the relevant `settings.json` for a matcher rejecting `Bash(git push ...)`, and the re-invocation instruction. Do **not** include the Option A snippet in this branch — it would not fix the problem.
+     - Ambiguous rejection: the Option A fragment plus a note that a `PreToolUse` hook may also be involved (audit `hooks.PreToolUse` if the allowlist addition doesn't unblock).
+   - **In all three variants above: do not include any phrasing that directs the user to run `git push` themselves in their shell** — that's the anti-pattern step 7a is built to prevent.
 
 ## Anti-pattern: do not use `AskUserQuestion` for push permission, and do not fall back to "please run `git push` yourself"
 

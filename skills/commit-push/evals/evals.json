@@ -11,6 +11,7 @@
         "Commit subject matches the Angular pattern `<type>(commit-push): <subject>` where type is one of feat/fix/docs/refactor/perf/test/style/build/chore/ci",
         "No AskUserQuestion split-proposal prompt was shown to the user",
         "git push ran exactly once",
+        "Before running git push, the skill emitted a one-line summary naming the branch and the number of commits being pushed (e.g., `→ pushing 1 commit to origin/<branch>`)",
         "Reported output includes the new commit SHA"
       ]
     },
@@ -27,6 +28,7 @@
         "After user accepts the split, exactly 2 new commits were created in the proposed order",
         "Each commit contains only the files from its group (spring-init commit does not touch hooks/, and vice versa)",
         "git push ran exactly once after both commits succeeded",
+        "Before running git push, the skill emitted a one-line summary naming the branch and the number of commits being pushed (e.g., `→ pushing 2 commits to origin/<branch>`)",
         "Reported output includes both commit SHAs, one per line"
       ]
     },
@@ -304,15 +306,16 @@
     },
     {
       "id": 23,
-      "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (single group). Configure the invocation environment so that Bash(git push ...) calls are denied by the permission layer (e.g., `skipAutoPermissionPrompt: true` + no matching allow rule, or an explicit PreToolUse hook that denies git push). The local commit machinery should still succeed. Then invoke: /commit-push",
-      "expected_output": "The per-group commit succeeds and stays on the local branch. The `git push` call is denied by the permission layer. The skill reports the denial, emits the Permissions-section Option A JSON snippet for `permissions.allow` — covering `Bash(git push)` and `Bash(git push -u origin HEAD)` — verbatim, points the user at Option B's prefix-match wildcard as an alternative without emitting it inline, tells the user to re-invoke /commit-push after adding the entry, and does NOT instruct the user to run `git push` themselves in a terminal. Verifies step 7a's denial-handling branch and the anti-pattern note forbidding manual-shell-out fallback.",
+      "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (single group). Configure the invocation environment so that Bash(git push ...) calls are denied by the permission allowlist (e.g., `skipAutoPermissionPrompt: true` plus no matching allow rule, or a sandbox that rejects the call with a 'permission denied / no matching allow rule' style message — NOT a PreToolUse hook, which is covered by eval 26). The local commit machinery should still succeed. Then invoke: /commit-push",
+      "expected_output": "The per-group commit succeeds and stays on the local branch. The `git push` call is denied by the permission allowlist. The skill classifies the rejection as allowlist-sourced per step 7a's distinguishing rule, emits the Option A merge-form fragment (the two entries `Bash(git push)` and `Bash(git push -u origin HEAD)` as strings to ADD to the user's existing `permissions.allow` array — NOT a top-level `{ \"permissions\": ... }` whole-file object that would clobber existing settings), points the user at Option B's prefix-match wildcard as an alternative without emitting it inline, tells the user to re-invoke /commit-push after merging the entries, and does NOT instruct the user to run `git push` themselves in a terminal. Verifies step 7a's allowlist-denial branch, the merge-not-replace snippet shape, and the anti-pattern note forbidding manual-shell-out fallback.",
       "files": [],
       "expectations": [
         "Exactly 1 new commit was created and remains on the local branch",
         "The skill attempted `git push` exactly once (no loop-retry in the same turn)",
-        "The skill's reply explicitly reports that the push was denied by the permission layer",
-        "The reply contains the Option A JSON snippet from the Permissions section verbatim — at minimum `Bash(git push)` and `Bash(git push -u origin HEAD)` in `permissions.allow`. Option B's prefix-match wildcard (`Bash(git push:*)`) must NOT be emitted inline as a copy-pasteable snippet (only referenced by pointer to the Permissions section) — emitting Option B inline would violate SKILL.md step 7a's 'do not emit Option B inline unless the user asks for it' rule and mask which shape an implementation actually produces.",
-        "The reply tells the user to re-invoke /commit-push after adding the settings entry (so the already-created local commits get pushed on the next run)",
+        "The skill's reply explicitly classifies the rejection as a permission-allowlist / sandbox denial (not a PreToolUse hook rejection)",
+        "The reply emits the Option A snippet as a merge-form fragment (two bare string entries `\"Bash(git push)\"` and `\"Bash(git push -u origin HEAD)\"` intended to be added to the existing `permissions.allow` array), NOT as a top-level `{ \"permissions\": { \"allow\": [...] } }` whole-file JSON object. A whole-file form is acceptable ONLY if the reply also explicitly notes it applies only when the target `settings.json` has no `permissions` key yet.",
+        "Option B's prefix-match wildcard (`Bash(git push:*)`) is mentioned by pointer to the Permissions section but NOT emitted inline as a copy-pasteable snippet (emitting Option B inline would violate SKILL.md step 7a's 'do not emit Option B inline unless the user asks' rule).",
+        "The reply tells the user to re-invoke /commit-push after merging the settings entry (so the already-created local commits get pushed on the next run via step 1a's push-only fast path)",
         "The reply does NOT contain the phrases 'run git push manually', 'type git push yourself', 'execute `git push` in your terminal', or any equivalent instruction directing the user to shell out to run the push themselves",
         "No local commits were rolled back, amended, or discarded as part of the denial-handling flow"
       ]
@@ -331,6 +334,40 @@
         "`git push` ran exactly once and succeeded",
         "Post-invocation `git status` reports the branch is up-to-date with origin",
         "The skill's reply acknowledges the fast path — e.g., 'working tree clean; pushing existing unpushed commits' — rather than reporting new commits created"
+      ]
+    },
+    {
+      "id": 25,
+      "prompt": "Setup: in a scratch git repo with at least one initial commit, a configured `origin` remote, create and check out a brand-new branch (e.g., `git checkout -b feature/first-push`). Make one new commit on the branch (any content). Do NOT set an upstream for the branch — `git rev-parse --abbrev-ref --symbolic-full-name @{u}` should fail. Working tree must be clean (no modifications, no staged, no untracked). Then invoke: /commit-push",
+      "expected_output": "The skill detects step 1a's no-upstream-branch + clean-tree state, classifies it as a first-push recovery path, skips steps 2–6 entirely, emits the pre-push summary, and runs `git push -u origin HEAD` (NOT bare `git push`) to publish the branch and establish tracking in one call. Verifies the step 1a no-upstream branch that handles recovery after a step 7a push denial where the *initial* push was denied before upstream was ever set — without this branch, re-invocation after the user adds the permissions entry would exit silently and leave the commits stranded.",
+      "files": [],
+      "expectations": [
+        "Pre-invocation: `git status` reports a clean working tree AND `git rev-parse --abbrev-ref --symbolic-full-name @{u}` fails (no upstream configured)",
+        "The skill did NOT exit silently with 'nothing to do' — it proceeded to step 7",
+        "The skill did NOT create any new commits (HEAD SHA after == HEAD SHA before)",
+        "The skill did NOT run `git add`, `git commit`, or any staging/commit Bash call",
+        "The skill did NOT invoke AskUserQuestion (step 1a bypasses the picker and split proposal)",
+        "The skill emitted a pre-push summary line before running the push command",
+        "The push command used `git push -u origin HEAD` (NOT bare `git push`, which would fail with `no upstream branch` on a fresh branch)",
+        "Post-invocation: the branch exists on origin and tracks `origin/<branch>`",
+        "The skill's reply acknowledges the first-push recovery path (e.g., 'publishing branch and establishing tracking', or similar language that makes clear this is the no-upstream case, not a routine ahead-of-upstream push)"
+      ]
+    },
+    {
+      "id": 26,
+      "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (single group, clean remaining tree). Configure Claude Code's `hooks.PreToolUse` in project `.claude/settings.json` to reject `Bash(git push ...)` calls (e.g., a hook that returns exit code 1 with stderr 'PreToolUse hook rejected: git push blocked by repository policy'). The local commit machinery must still succeed — the hook only rejects the push. Then invoke: /commit-push",
+      "expected_output": "The per-group commit succeeds and stays on the local branch. The `git push` call is rejected by the PreToolUse hook. The skill classifies the rejection as hook-sourced per step 7a's distinguishing rule (the error mentions 'hook', 'PreToolUse', or the hook's stderr reason), reports the hook rejection clearly, and tells the user to audit their `hooks.PreToolUse` configuration in project or user `settings.json`. The skill does NOT emit the Option A `permissions.allow` snippet for this case — adding an allow entry wouldn't fix a hook rejection, since hooks run independently of the allowlist. Verifies step 7a's hook-rejection branch and the hook-vs-allowlist distinguishing rule.",
+      "files": [],
+      "expectations": [
+        "Exactly 1 new commit was created and remains on the local branch",
+        "The skill attempted `git push` exactly once (no loop-retry in the same turn)",
+        "The skill's reply explicitly classifies the rejection as a PreToolUse hook rejection (mentions 'hook', 'PreToolUse', or references the hook's stderr reason) — not as a permission-allowlist denial",
+        "The reply surfaces the hook's rejection reason / stderr where available",
+        "The reply tells the user to audit `hooks.PreToolUse` entries in project `.claude/settings.json` or user `~/.claude/settings.json` and adjust / remove / scope down the matcher that rejects `Bash(git push ...)`",
+        "The reply does NOT emit the Option A `permissions.allow` snippet (`Bash(git push)`, `Bash(git push -u origin HEAD)`) as the primary fix — adding an allow entry does not unblock a hook rejection. An ambiguous reply that mentions Option A as a fallback 'in case the hook is actually an allowlist issue' is acceptable ONLY if the primary guidance is hook-audit.",
+        "The reply tells the user to re-invoke /commit-push after adjusting the hook configuration",
+        "The reply does NOT instruct the user to run `git push` themselves in a terminal",
+        "No local commits were rolled back, amended, or discarded as part of the hook-rejection-handling flow"
       ]
     }
   ]
