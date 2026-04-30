@@ -1,5 +1,6 @@
 ---
 name: commit-push
+model: sonnet
 description: Commit staged/unstaged changes and push to origin with an Angular-style commit message. Auto-detects when changes span multiple cohesive scopes and proposes splitting them into multiple commits; override with `--single`/`-1` or natural-language phrases like "as one commit" or "single commit". File scoping (explicit `@file` args, `--select` interactive picker) and secret-file filtering apply on every path, including the override. Trigger this skill whenever the user wants to commit, check in, save, or wrap up their work — including phrases like "commit and push", "commit this", "check in these changes", "save my work", "wrap this up", "/commit-push", "push my changes", or after completing any task that produced file changes the user will want to land. Also trigger when the user wants to choose, select, or pick which changed files to include in a commit, or mentions splitting commits by scope. Accepts optional file arguments to scope the commit, or interactive selection to pick files from the working tree.
 ---
 
