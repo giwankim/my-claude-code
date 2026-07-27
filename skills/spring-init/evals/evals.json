@@ -66,6 +66,31 @@
         "Root settings.gradle.kts contains include(\"billing\")",
         "Step 4d (config format) is NOT asked — defaults path skips it"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "create a new spring boot project on version 4.1.0, gradle-kotlin + kotlin, with the web dependency. call it orders. defaults for everything else.",
+      "expected_output": "A generated project whose build.gradle.kts pins Boot 4.1.0 exactly — the spring init command must pass -b 4.1.0, never 4.1.0.RELEASE",
+      "files": [],
+      "expectations": [
+        "The spring init command passes -b 4.1.0 (no .RELEASE suffix)",
+        "The orders/ directory was actually created (spring init exits 0 even when generation fails server-side)",
+        "orders/build.gradle.kts pins org.springframework.boot version 4.1.0",
+        "No 'could not be resolved' BOM error occurred during generation",
+        "Metadata was fetched with the v2.2 Accept header, not plain application/json"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "new spring boot project, customize settings. I want boot version 4.1.0.RELEASE, gradle-kotlin, kotlin, web dep, name it legacyver",
+      "expected_output": "The hand-typed legacy version is normalized to 4.1.0 before generation, and the project is created successfully",
+      "files": [],
+      "expectations": [
+        "The .RELEASE suffix was normalized away — the spring init command passes -b 4.1.0",
+        "The legacyver/ directory was actually created",
+        "legacyver/build.gradle.kts pins org.springframework.boot version 4.1.0",
+        "The skill did not pass the user's literal 4.1.0.RELEASE string to -b"
+      ]
     }
   ]
 }

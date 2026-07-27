@@ -1,6 +1,6 @@
 ---
 name: spring-init
-version: 0.3.0
+version: 0.4.0
 description: >-
   Initialize a new Spring Boot project using Spring Initializr via the spring CLI.
   Use when the user says "new spring project", "spring init", "create spring boot app",
@@ -30,8 +30,29 @@ Run `command -v spring`.
 
 Run:
 ```bash
-curl -s -H 'Accept: application/json' https://start.spring.io
+curl -s -H 'Accept: application/vnd.initializr.v2.2+json' https://start.spring.io
 ```
+
+**The `Accept` header matters — do not drop it or send `application/json`.**
+`start.spring.io` content-negotiates its metadata, and the older representations
+report Boot versions in a legacy format (`4.1.0.RELEASE`,
+`4.1.1.BUILD-SNAPSHOT`) that no longer corresponds to anything published to
+Maven Central. Passing one of those ids to `spring init -b` makes the server
+fail with `Bom 'org.springframework.boot:spring-boot-dependencies:4.1.0.RELEASE'
+could not be resolved` — and since `spring init` exits 0 even then, the failure
+is silent and no project directory appears. The `v2.2` representation reports
+real artifact versions (`4.1.0`, `4.1.1-SNAPSHOT`, `4.2.0-M1`), which is why it
+is the right source to read from.
+
+This gets the ids right at the source, but do not treat it as a licence to skip
+the normalization step below — that step runs unconditionally regardless of
+which representation the data came from.
+
+If the request returns HTTP 406, the service is offering a different set of
+representations and its error body lists them
+(`Acceptable representations: [...]`). Retry with the highest
+`application/vnd.initializr.vX.Y+json` on offer, falling back to plain
+`application/json` only if nothing else remains.
 
 Parse the JSON response and extract these data structures for use in all
 subsequent steps:
@@ -47,15 +68,17 @@ subsequent steps:
 **Derived values:**
 
 Each boot version has two representations — the `name` (human-readable, for
-prompts) and the `id` (API identifier, for the `spring init -b` flag). These
-can differ significantly: e.g. `name="4.1.0 (M4)"` vs `id="4.1.0.M4"`, or
-`name="4.0.5"` vs `id="4.0.5.RELEASE"`. Always track both. Show the `name`
-to the user; pass the `id` to `spring init -b`.
+prompts) and the `id` (the published artifact version, for the `spring init -b`
+flag). For stable releases they are identical (`name="4.1.0"`, `id="4.1.0"`);
+for pre-releases the name is decorated for readability while the id stays in
+artifact form: `name="4.1.1 (SNAPSHOT)"` vs `id="4.1.1-SNAPSHOT"`,
+`name="4.2.0 (M1)"` vs `id="4.2.0-M1"`. Track both. Show the `name` to the
+user; pass the `id` to `spring init -b`.
 
 - **`LATEST_STABLE_BOOT`** — The first entry in `BOOT_VERSIONS` whose `name`
   contains no parenthetical qualifier (no "SNAPSHOT", "M", "RC"). Store both:
-  - `display`: the `name` field (e.g. `"4.0.5"`)
-  - `id`: the `id` field (e.g. `"4.0.5.RELEASE"`)
+  - `display`: the `name` field (e.g. `"4.1.0"`)
+  - `id`: the `id` field (e.g. `"4.1.0"`, identical for stable releases)
 - **`LATEST_3X_STABLE`** — Same logic, but the first stable version whose `name`
   starts with `3.` (if any still exist in the list). Store both `display` and `id`.
 - **`JAVA_HIGHEST`** — The first entry in `JAVA_VERSIONS` (already ordered
@@ -66,15 +89,36 @@ to the user; pass the `id` to `spring init -b`.
 - **Milestone/RC**: `name` contains `(M...)` or `(RC...)`
 - **Snapshot**: `name` contains `(SNAPSHOT)`
 
+**Normalizing a version id.** Whatever reaches `-b` has to be a real published
+artifact version, because the server resolves it literally against Maven Central.
+Apply this transform to the boot version **every time, without exception**, as
+the last thing you do before putting it in the command:
+
+- Drop a trailing `.RELEASE` → `4.1.0.RELEASE` becomes `4.1.0`
+- `.BUILD-SNAPSHOT` becomes `-SNAPSHOT` → `4.1.1.BUILD-SNAPSHOT` becomes `4.1.1-SNAPSHOT`
+- A `.` before an `M`/`RC` qualifier becomes `-` → `4.2.0.M1` becomes `4.2.0-M1`
+
+Do it unconditionally rather than deciding case-by-case whether this particular
+version "needs" it. The transform is idempotent — an already-correct `4.1.0` or
+`4.1.1-SNAPSHOT` passes through unchanged — so running it always costs nothing
+and removes any chance of reasoning your way into the wrong branch. Judgement
+calls about which source a version came from are exactly where this bug gets in.
+
+Never apply the reverse. Appending `.RELEASE` to a bare version produces an
+artifact that does not exist, which is the bug this guards against.
+
 **Version range parsing** for filtering dependencies in Steps 5–6:
 
-Dependencies may have a `versionRange` field using Maven range notation, e.g.
-`[3.5.0.RELEASE,4.2.0.M1)` or just `4.0.0.RELEASE` (meaning ≥ that version).
+Dependencies may have a `versionRange` field using Maven range notation. In the
+v2.2 representation the bounds are artifact versions, matching the boot version
+ids — e.g. `[4.0.0,4.2.0-M1)` or just `4.0.0` (meaning ≥ that version).
 
 - `[` = inclusive lower bound, `(` = exclusive lower bound
 - `]` = inclusive upper bound, `)` = exclusive upper bound
 - A bare version means "this version and above"
-- Compare version parts numerically; qualifier order: no qualifier = `RELEASE` > `RC` > `M` > `BUILD-SNAPSHOT`
+- Compare version parts numerically, then compare qualifiers: no qualifier
+  (a final release) > `RC` > `M` > `SNAPSHOT`. So `4.2.0-M1 < 4.2.0`, which is
+  why an upper bound of `4.2.0-M1` still excludes every 4.2.0 pre-release.
 - Empty or absent `versionRange` means compatible with all Boot versions
 
 A dependency is compatible with the selected Boot version if the Boot version
@@ -88,18 +132,19 @@ full network or service outage will break both. Use a tiered fallback:
 **Level 2 — `spring init --list`** (if `curl` fails due to a parse error,
 missing `curl` binary, or a transient issue where the CLI may still work):
 
-1. Run `spring init --list` and parse all three output sections:
-   - **Parameters** table → extract `bootVersion` and `javaVersion` defaults
+1. Run `spring init --list` and parse its output sections:
+   - **Supported dependencies** table → extract IDs, descriptions, AND the
+     "Required version" column (e.g. `>=3.5.0 and <4.0.0`, `>=4.0.0`). These
+     bounds are already artifact versions, so feed them to the same filtering
+     logic described in the version range parsing section above and Steps 5–6
+     can still drop incompatible dependencies.
    - **Project types** table → extract available types and the default (marked `*`)
-   - **Dependencies** table → extract IDs, descriptions, AND the "Required
-     version" column (e.g. `>=3.5.0 and <4.1.0-M1`, `>=4.0.0`). Map these
-     constraints to the same filtering logic described in the version range
-     parsing section above so that Steps 5–6 can still filter incompatible
-     dependencies.
 2. Use `references/dependencies.md` for dependency group structure (the CLI
    output is a flat list without groups).
-3. In Steps 3 and 4, present only the default boot/java versions and accept
-   free-text input (the CLI does not enumerate available versions).
+3. This output carries no boot or java version list — recent CLI versions do not
+   print a parameters table at all. Ask the user for both in Steps 3 and 4 rather
+   than guessing, and normalize whatever they type (see "Normalizing a version
+   id") before it reaches `-b`.
 4. Note to the user that some options may be limited.
 
 **Level 3 — fully offline** (if both `curl` and `spring init --list` fail):
@@ -188,7 +233,11 @@ Options (dynamically numbered from `BOOT_VERSIONS`):
   ...
 ```
 
-Default: `{LATEST_STABLE_BOOT.display}`. The user can also type a custom version string.
+Default: `{LATEST_STABLE_BOOT.display}`. The user can also type a custom version
+string — if they do, match it against `BOOT_VERSIONS` and use that entry's `id`;
+a version matching nothing in the list still gets used as typed. Either way it
+goes through normalization before reaching `-b`, so a user typing `4.1.0.RELEASE`
+from memory of the old Spring scheme still ends up with a working project.
 
 ### Step 4 — Project coordinates
 
@@ -435,8 +484,13 @@ spring init \
 ```
 
 Important notes:
-- Use the boot version's `id` field for `-b` (e.g. `4.0.5.RELEASE`, `4.1.0.M4`),
-  not the display `name`. The API requires the full qualifier.
+- Use the boot version's `id` field for `-b` (e.g. `4.1.0`, `4.1.1-SNAPSHOT`),
+  not the display `name` — the name carries parenthetical decoration like
+  `4.1.1 (SNAPSHOT)` that is not a valid version.
+- **Run the id through normalization first** (see "Normalizing a version id"),
+  every time, whatever its source. This is the last checkpoint before the
+  server resolves it against Maven Central. Do not append `.RELEASE` or any
+  other suffix.
 - Use `--type` (not `--build`) to distinguish Gradle-Kotlin from Gradle-Groovy.
 - Omit `-d` entirely if no dependencies were selected.
 - Passing a directory name as the target auto-extracts the archive (no `-x` needed).
@@ -447,12 +501,20 @@ Important notes:
 After executing the `spring init` command:
 
 1. **Verify the target directory exists.** If `./<artifact>` was not created,
-   the command silently failed (`spring init` exits 0 even on server-side errors).
-   Capture the full command output, tell the user the generation failed, suggest
-   the most likely cause (dependency incompatible with the chosen Boot version),
-   and offer to re-select dependencies or Boot version. If the failure seems
-   related to a stale Spring CLI, suggest upgrading:
-   `sdk install springboot {LATEST_STABLE_BOOT.display}`.
+   the command silently failed (`spring init` exits 0 even on server-side
+   errors), so the output text is the only evidence — always capture and read it
+   rather than trusting the exit status. Match the message against these causes:
+   - `Bom 'org.springframework.boot:spring-boot-dependencies:<v>' could not be
+     resolved` → `<v>` is not a published artifact version. This is almost
+     always a legacy-format version that picked up a `.RELEASE` or
+     `.BUILD-SNAPSHOT` suffix. Normalize it (see "Normalizing a version id"),
+     confirm the result appears in `BOOT_VERSIONS`, and retry.
+   - An invalid-dependency error → a dependency is incompatible with the chosen
+     Boot version; offer to re-select dependencies or the Boot version.
+   - Anything suggesting a stale Spring CLI → suggest upgrading:
+     `sdk install springboot {LATEST_STABLE_BOOT.display}`.
+
+   If the message is unclear, show it to the user verbatim rather than guessing.
 
 2. **CRITICAL — Convert `application.properties` to `application.yaml`.**
    DO NOT SKIP THIS STEP. This is the most commonly missed step in this skill.
@@ -491,6 +553,17 @@ After executing the `spring init` command:
      `settings.gradle`), unless it already contains that include.
 4. List the generated project structure: `find <target> -type f | head -30`.
 5. **Verify project integrity:**
+   - Confirm the build file pins the Boot version the user actually chose:
+     `grep -n 'org.springframework.boot' <artifact>/build.gradle.kts` (or the
+     `<parent>` block in `pom.xml`). It should match the `-b` value exactly.
+     A mismatch means the server fell back to its own default, which is worth
+     telling the user about rather than silently accepting.
+   - Confirm the Java toolchain matches `-j`: check `JavaLanguageVersion.of(N)`
+     in the Gradle build, or `<java.version>` in `pom.xml`. Initializr silently
+     clamps a Java version the chosen Boot release does not support yet — asking
+     for 26 on Boot 4.1.0 yields 25 with no warning. Since the Step 7 summary
+     already told the user their requested number, report the discrepancy rather
+     than letting the summary stand as a false record of what was built.
    - If Gradle-based and standalone layout, verify `./gradlew` exists and is
      executable in the target directory.
    - If YAML config was chosen, verify that `application.yaml` exists in
@@ -518,3 +591,9 @@ After executing the `spring init` command:
   path and suggest checking connectivity.
 - **Invalid dependency IDs**: If `spring init` fails with an invalid dependency error,
   show the error message and re-prompt for corrected dependency selection.
+- **Legacy version format**: A `-b` value carrying a `.RELEASE` or
+  `.BUILD-SNAPSHOT` suffix will not resolve — Spring dropped that scheme, and
+  those artifacts do not exist in Maven Central. The suffix creeps in from the
+  legacy `application/json` metadata or from a user typing a remembered version.
+  Fetch metadata with the `v2.2` Accept header and normalize any hand-entered
+  version, so the suffix never reaches the command in the first place.
