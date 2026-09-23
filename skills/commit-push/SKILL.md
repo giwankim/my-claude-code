@@ -6,6 +6,20 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
 
 # Commit and Push
 
+## User input (Claude Code and Codex)
+
+Whenever this workflow asks the user to select files, choose a split, adjust groups, or resolve out-of-scope hook changes, use the input mechanism available in the current host:
+
+- **Claude Code:** use `AskUserQuestion` when available.
+- **Codex:** prefer `request_user_input_async` when available; otherwise use `request_user_input` only when the current mode and tool instructions allow this kind of question. Do not switch modes just to access a question tool.
+- **Fallback:** if no suitable input tool is available, ask the same question in a normal chat response and end the turn to wait for the user's reply.
+
+Follow the selected tool's actual schema: these tools do not accept interchangeable payloads. Keep the file/status list or commit preview in the question text, preserve the meaning of the workflow's choices (shorten option labels when required), and allow free-text numbers/ranges for file selection and custom groups. If the tool requires choices for a numeric picker, offer a choice to enter file numbers through its free-text response; if that is unsupported, use the chat fallback.
+
+Wait for an actual answer before any action that depends on it, including changing the index, committing, or pushing. An asynchronous tool returning, a preselected option, or no answer is not a user decision. While awaiting asynchronous input, only independent read-only work may continue; if none remains, yield the turn with the question pending. Apply the workflow's empty/invalid-selection rule only to a submitted answer.
+
+These prompts collect workflow choices; command execution permissions belong to the host's permission system. Do not add a separate conversational confirmation for an already-requested push.
+
 ## Permissions (one-time setup)
 
 This skill ends with `git push`. If the Claude Code environment denies that call — common configurations: `defaultMode: "plan"`, `skipAutoPermissionPrompt: true`, strict sandboxes like Conductor — add an allow entry to `~/.claude/settings.json` (user-level) or `.claude/settings.json` (project-level) once and the denial never fires again.
@@ -89,7 +103,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
 
    **a) Candidate file set** (files eligible for committing):
    - **Explicit file args** (e.g., `@file1 @file2`): candidate set = those files.
-   - **`--select` / `-i`**: interactive picker. Run `git status --porcelain`, then present a numbered list via `AskUserQuestion` with each file's M/A/D/?? indicator, e.g.:
+   - **`--select` / `-i`**: interactive picker. Run `git status --porcelain`, then present a numbered list using the **User input** guidance above with each file's M/A/D/?? indicator, e.g.:
      ```text
      Select files to include:
       1. M  src/auth/login.ts
@@ -133,7 +147,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
    - If only 1 group → silently jump to step 5.
    - If 2+ groups → continue to step 4.
 
-4. **Propose the split** via `AskUserQuestion`. The prompt must:
+4. **Propose the split** using the **User input** guidance above. The prompt must:
    - Preview each proposed commit with: scope, files (M/A/D/?? indicators), and a draft `type(scope): subject` (infer `type` from the diff: new behavior → `feat`, bugfix → `fix`, tests-only → `test`, docs-only → `docs`, config/build/CI → `chore`/`build`/`ci`; if mixed within a group, pick the dominant type — do **not** subdivide further).
    - Include a **cap warning** if there are >5 groups: "This change spans N groups, which is unusually scattered. Consider combining or adjusting groupings." Surface the Combine and Adjust options prominently.
    - Offer exactly these 3 options:
@@ -148,7 +162,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
    **4b. Custom groupings sub-flow** (only entered from "Adjust groupings"). Iteratively let the user define groups until every candidate file is assigned — this differs from `--select`, which only produces a single set:
    - Maintain a list of unassigned files (initially: the entire candidate set).
    - Loop:
-     1. Use `AskUserQuestion` to present unassigned files (numbered, with M/A/D/?? indicators). Offer:
+     1. Use the **User input** guidance above to present unassigned files (numbered, with M/A/D/?? indicators). Offer:
         - Numeric input (e.g., `1,3,5` or `1-3,5`) → those files form the next group; mark them assigned.
         - `All remaining files in one final commit` → all unassigned become the last group; exit loop.
         - `Cancel and return to the proposal` → discard any in-progress custom groupings and return to step 4's 3-option proposal.
@@ -190,7 +204,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
      - **Non-candidate files**: only those whose status indicator *changed* from the snapshot or that *newly appeared* as unstaged count as delta. Files that were already dirty pre-loop and remain identically dirty post-loop are the user's pre-existing unrelated work and must not be touched.
    - If the delta is empty: skip — no extra commit.
    - If the delta contains only files that were also in the post-filter candidate set (step 2a's scoping ∩ step 2b's secret filter): stage just the delta files (`git add <delta-file>...`) and create one final commit, typically `chore(commit-push): reconcile hook auto-fixes` (use `style:` if purely formatting, or `fix:` if the hook actually fixed bugs — match the diff). Mention this commit explicitly in your reply so the user understands why an extra commit appeared and can keep/squash/split it.
-   - If the delta contains files *outside* the original candidate set (a hook touched files the user wasn't trying to commit): warn the user and let them decide — do NOT auto-stage these. They may want to stash them, commit them separately under a different intent, or verify the hook's behavior. Auto-committing files the user didn't include in their candidate set would violate the principle that the skill only commits files the user opted in to.
+   - If the delta contains files *outside* the original candidate set (a hook touched files the user wasn't trying to commit): warn the user and ask how to proceed using the **User input** guidance above — do NOT auto-stage these. They may want to stash them, commit them separately under a different intent, or verify the hook's behavior. Auto-committing files the user didn't include in their candidate set would violate the principle that the skill only commits files the user opted in to.
 
 7. After **all** commits (per-group + any reconciliation) succeed, push to origin on the current branch. Emit a one-line summary **immediately before** invoking the push, in the form: `→ pushing <N> commit(s) to <remote>/<branch>` (a single push for the whole batch, regardless of how many commits were created).
 
@@ -198,7 +212,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
 
    **Choose the push command based on upstream state.** If the current branch already has an upstream (`git rev-parse --abbrev-ref --symbolic-full-name @{u}` succeeds), run bare `git push`. If it does **not** (the command fails / no upstream configured), run `git push -u origin HEAD` instead — this publishes the branch and establishes tracking in one call, and handles both the routine first-push case and the first-push recovery path from step 1a. Do not run bare `git push` on a no-upstream branch; it will fail with `fatal: The current branch ... has no upstream branch` and leave the user in exactly the kind of blocked state step 7a exists to avoid.
 
-   Do **not** wrap the push in `AskUserQuestion` to "confirm" first — `AskUserQuestion` is a conversation-layer tool and cannot authorize a `Bash(git push ...)` call, so using it as a pre-push confirmation just doubles the prompt count without improving safety. The summary above gives the user context; if the permission layer then prompts for the push, the user already knows exactly what they're authorizing. **Skip the push if step 5.4c fired** — earlier successful commits stay local so the user can inspect, amend, or cherry-pick before deciding whether to push. Pushing a partial batch would surface the leading groups to origin while silently dropping the failed group, violating the atomic-batch invariant this skill otherwise enforces.
+   Do **not** wrap the push in a user-input prompt to "confirm" first — a conversational answer cannot grant shell execution permission, so using it as a pre-push confirmation just doubles the prompt count without improving safety. The summary above gives the user context; if the permission layer then prompts for the push, the user already knows exactly what they're authorizing. **Skip the push if step 5.4c fired** — earlier successful commits stay local so the user can inspect, amend, or cherry-pick before deciding whether to push. Pushing a partial batch would surface the leading groups to origin while silently dropping the failed group, violating the atomic-batch invariant this skill otherwise enforces.
 
    **7a. If the push is denied / rejected by Claude Code** (silent denial, sandbox rule, `PreToolUse` hook rejection, or any "tool use was rejected" style error):
 
@@ -225,8 +239,8 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
      - Ambiguous rejection: the Option A fragment plus a note that a `PreToolUse` hook may also be involved (audit `hooks.PreToolUse` if the allowlist addition doesn't unblock).
    - **In all three variants above: do not include any phrasing that directs the user to run `git push` themselves in their shell** — that's the anti-pattern step 7a is built to prevent.
 
-## Anti-pattern: do not use `AskUserQuestion` for push permission, and do not fall back to "please run `git push` yourself"
+## Anti-pattern: do not use conversational input for push permission, and do not fall back to "please run `git push` yourself"
 
-`AskUserQuestion` is a conversation tool and cannot pre-authorize a `Bash(git push ...)` call under any permission mode, sandbox configuration, or hook setup. Using it as a pre-push confirmation produces redundant prompts and has zero effect on whether the push actually succeeds — the permission layer still evaluates the Bash call independently. The one-line summary in step 7 is the correct way to give the user (and the permission layer's prompt, where it exists) context about what's about to happen.
+User-input tools and ordinary chat cannot pre-authorize shell execution under any permission mode, sandbox configuration, or hook setup. Using them as a pre-push confirmation produces redundant prompts and has zero effect on whether the push actually succeeds — the permission layer still evaluates the shell call independently. The one-line summary in step 7 is the correct way to give the user (and the permission layer's prompt, where it exists) context about what's about to happen.
 
 Equally: if the push is denied, **do not** tell the user to run `git push` in their own terminal. Manual shell-out as a fallback defeats the point of commit-and-push being a single workflow, and it treats a fixable configuration issue (missing permission entry) as a workflow dead-end. The correct response to any permission-layer denial is step 7a: report the denial, emit the Permissions snippet, instruct re-invocation. The already-created local commits are the unit of work that gets pushed on re-invocation.

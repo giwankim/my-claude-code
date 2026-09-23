@@ -4,12 +4,12 @@
     {
       "id": 1,
       "prompt": "Setup: in a scratch git repo, modify two files under skills/commit-push/ (e.g., edit two lines in skills/commit-push/SKILL.md and create a new sibling file skills/commit-push/notes.md). No other files changed. Then invoke: /commit-push",
-      "expected_output": "A single commit scoped to (commit-push), with no AskUserQuestion proposal shown. Single-group default path — no behavior regression vs. the pre-auto-detect skill.",
+      "expected_output": "A single commit scoped to (commit-push), with no user-input proposal shown. Single-group default path — no behavior regression vs. the pre-auto-detect skill.",
       "files": [],
       "expectations": [
         "Exactly 1 new commit was created",
         "Commit subject matches the Angular pattern `<type>(commit-push): <subject>` where type is one of feat/fix/docs/refactor/perf/test/style/build/chore/ci",
-        "No AskUserQuestion split-proposal prompt was shown to the user",
+        "No user-input split-proposal prompt was shown to the user",
         "git push ran exactly once",
         "Before running git push, the skill emitted a one-line summary naming the branch and the number of commits being pushed (e.g., `→ pushing 1 commit to origin/<branch>`)",
         "Reported output includes the new commit SHA"
@@ -18,10 +18,10 @@
     {
       "id": 2,
       "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (e.g., edit SKILL.md) AND one file under hooks/ (e.g., touch hooks/notes.txt). Two distinct top-level scopes. Then invoke: /commit-push",
-      "expected_output": "An AskUserQuestion proposal previewing 2 commits — one (spring-init), one (hooks) — with three options. Accepting 'Yes' produces 2 commits, one push at the end, both SHAs reported.",
+      "expected_output": "A user-input proposal previewing 2 commits — one (spring-init), one (hooks) — with three options. Accepting 'Yes' produces 2 commits, one push at the end, both SHAs reported.",
       "files": [],
       "expectations": [
-        "An AskUserQuestion prompt was shown previewing exactly 2 proposed commits",
+        "A user-input prompt was shown previewing exactly 2 proposed commits",
         "The proposal listed the files belonging to each proposed commit, grouped by inferred scope",
         "The proposal offered exactly 3 options: confirm split, combine into single commit, adjust groupings",
         "Proposed commit subjects use scopes (spring-init) and (hooks) respectively",
@@ -35,10 +35,10 @@
     {
       "id": 3,
       "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push --single",
-      "expected_output": "No AskUserQuestion proposal; exactly 1 combined commit. The --single flag is recognized as an explicit override of auto-detect.",
+      "expected_output": "No user-input proposal; exactly 1 combined commit. The --single flag is recognized as an explicit override of auto-detect.",
       "files": [],
       "expectations": [
-        "No AskUserQuestion split-proposal prompt was shown",
+        "No user-input split-proposal prompt was shown",
         "Exactly 1 new commit was created containing all changed files (both the spring-init file and the hooks file)",
         "git push ran exactly once",
         "Reported output includes the single commit SHA"
@@ -47,10 +47,10 @@
     {
       "id": 4,
       "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push commit this as one commit",
-      "expected_output": "No AskUserQuestion proposal; exactly 1 combined commit. The natural-language phrase 'as one commit' is recognized as an override of auto-detect.",
+      "expected_output": "No user-input proposal; exactly 1 combined commit. The natural-language phrase 'as one commit' is recognized as an override of auto-detect.",
       "files": [],
       "expectations": [
-        "No AskUserQuestion split-proposal prompt was shown",
+        "No user-input split-proposal prompt was shown",
         "Exactly 1 new commit was created containing all changed files",
         "The skill's response acknowledges the natural-language single-commit signal (e.g., notes that auto-detect was bypassed)",
         "git push ran exactly once",
@@ -63,7 +63,7 @@
       "expected_output": "Existing interactive picker runs (no auto-detect). User picks one file. Exactly 1 commit from picked files. No regression vs. the pre-auto-detect skill.",
       "files": [],
       "expectations": [
-        "An AskUserQuestion prompt was shown listing the changed files with M/A/D/?? status indicators (the existing --select picker idiom)",
+        "A user-input prompt was shown listing the changed files with M/A/D/?? status indicators (the existing --select picker idiom)",
         "No split-proposal prompt was shown (auto-detect was skipped because --select was passed)",
         "After user selects file numbers, exactly 1 new commit was created containing only the selected files",
         "git push ran exactly once",
@@ -73,10 +73,10 @@
     {
       "id": 6,
       "prompt": "Setup: in a scratch git repo, modify one file in each of 6 distinct grouping scopes that the step 3 heuristic will produce: one file under skills/spring-init/ (scope spring-init via rule 3.1), one under skills/commit-push/ (scope commit-push via rule 3.1), one under hooks/ (scope hooks via rule 3.3), one under tests/ (scope tests, kept separate because there are multiple non-test scopes), one under docs/ (scope docs via rule 3.3), and a root file like Makefile (scope build via rule 3.4). Then invoke: /commit-push",
-      "expected_output": "AskUserQuestion proposal lists 6 proposed commits AND surfaces a cap warning that the change is unusually scattered. The 'Combine' and 'Adjust groupings' options are surfaced prominently.",
+      "expected_output": "A user-input proposal lists 6 proposed commits AND surfaces a cap warning that the change is unusually scattered. The 'Combine' and 'Adjust groupings' options are surfaced prominently.",
       "files": [],
       "expectations": [
-        "An AskUserQuestion proposal was shown previewing 6 (or more) proposed commits",
+        "A user-input proposal was shown previewing 6 (or more) proposed commits",
         "The proposal includes a warning that the change spans an unusually high number of groups (>5)",
         "The 'Combine into a single commit' and 'Adjust groupings' options are presented prominently in the proposal",
         "If the user picks 'Combine', exactly 1 commit is created containing all 6 changes",
@@ -131,9 +131,9 @@
       "expected_output": "Two custom commits created via the iterative custom-grouping sub-flow (not via a single --select picker). All three originally-changed files end up across the two commits, with no files left uncommitted. Verifies that 'Adjust groupings' supports multi-commit custom batches (Codex P1 fix).",
       "files": [],
       "expectations": [
-        "An initial AskUserQuestion split-proposal showed 3 proposed commits",
+        "An initial user-input split-proposal showed 3 proposed commits",
         "User selecting 'Adjust groupings' triggered an iterative custom-grouping sub-flow, NOT a single one-shot --select picker",
-        "Multiple AskUserQuestion calls were made during the sub-flow (one per custom group definition)",
+        "Multiple user-input requests were made during the sub-flow (one per custom group definition)",
         "Exactly 2 new commits were created (per the user's custom groupings, not the proposed 3-way split and not a single combined commit)",
         "Commit 1 contains skills/spring-init/SKILL.md AND hooks/notes.txt (the combined custom group)",
         "Commit 2 contains docs/README.md only",
@@ -149,7 +149,7 @@
       "expectations": [
         "Exactly 1 new commit was created",
         "The commit contains BOTH hooks/runner.sh AND tests/test_hooks.sh",
-        "No AskUserQuestion split-proposal was shown (the heuristic merged tests with the hooks impl into a single group)",
+        "No user-input split-proposal was shown (the heuristic merged tests with the hooks impl into a single group)",
         "The commit subject uses a scope reflecting the implementation (e.g., (hooks)), NOT (tests)",
         "git push ran exactly once (or was logged)"
       ]
@@ -157,10 +157,10 @@
     {
       "id": 12,
       "prompt": "Setup: same as scenario 2 (one file in skills/spring-init/, one file in hooks/). Then invoke: /commit-push -1",
-      "expected_output": "No AskUserQuestion proposal; exactly 1 combined commit. The -1 short-flag is recognized as an alias for --single per the SKILL frontmatter and step 2c's override token list. Parallel to eval 3 (which covers --single) so the alias coverage is explicit.",
+      "expected_output": "No user-input proposal; exactly 1 combined commit. The -1 short-flag is recognized as an alias for --single per the SKILL frontmatter and step 2c's override token list. Parallel to eval 3 (which covers --single) so the alias coverage is explicit.",
       "files": [],
       "expectations": [
-        "No AskUserQuestion split-proposal prompt was shown",
+        "No user-input split-proposal prompt was shown",
         "Exactly 1 new commit was created containing all changed files (both the spring-init file and the hooks file)",
         "The skill's reply acknowledges that the -1 single-commit override was honored",
         "git push ran exactly once (or was logged)",
@@ -170,10 +170,10 @@
     {
       "id": 13,
       "prompt": "Setup: in a scratch git repo, modify two root files: Makefile (append a comment line) and README.md (append a line). No other files are changed. Then invoke: /commit-push",
-      "expected_output": "AskUserQuestion proposal previewing 2 commits — one (build) covering Makefile and one (docs) covering README.md — because root files are now grouped by inferred scope rather than lumped into a single 'one group'. Verifies disambiguation of the prior root-files rule (CodeRabbit major / Devin ANALYSIS_0001).",
+      "expected_output": "A user-input proposal previewing 2 commits — one (build) covering Makefile and one (docs) covering README.md — because root files are now grouped by inferred scope rather than lumped into a single 'one group'. Verifies disambiguation of the prior root-files rule (CodeRabbit major / Devin ANALYSIS_0001).",
       "files": [],
       "expectations": [
-        "An AskUserQuestion split-proposal prompt was shown previewing exactly 2 proposed commits",
+        "A user-input split-proposal prompt was shown previewing exactly 2 proposed commits",
         "One proposed commit has scope (build) and contains Makefile",
         "One proposed commit has scope (docs) and contains README.md",
         "On accepting 'Yes', exactly 2 commits are created with the correct scopes and file contents",
@@ -188,7 +188,7 @@
       "expectations": [
         "Exactly 1 new commit was created",
         "The commit subject uses scope (ci), NOT (.github)",
-        "No AskUserQuestion split-proposal was shown (single group)",
+        "No user-input split-proposal was shown (single group)",
         "The commit contains exactly the .github/workflows/test.yml file"
       ]
     },
@@ -211,8 +211,8 @@
       "expected_output": "The Cancel option discards the in-progress group 1 (no commit is created for it), returns control to step 4's original 3-option proposal, and the final accepted 'Yes' produces the original 3-way split (3 commits, NOT 1 commit from the discarded group). Verifies the Cancel branch of step 4b's iterative sub-flow that wasn't covered by eval 10. Closes the round-3 coverage gap.",
       "files": [],
       "expectations": [
-        "Initial AskUserQuestion split-proposal showed 3 proposed commits",
-        "User selecting 'Adjust groupings' triggered the iterative custom-grouping sub-flow with at least 2 AskUserQuestion calls before cancel",
+        "Initial user-input split-proposal showed 3 proposed commits",
+        "User selecting 'Adjust groupings' triggered the iterative custom-grouping sub-flow with at least 2 user-input requests before cancel",
         "After the user chose 'Cancel and return to the proposal' on the second iteration, the in-progress group 1 was discarded (no commit was created from it)",
         "The original 3-option split-proposal was re-shown after cancel",
         "User selecting 'Yes' on the re-shown proposal produced exactly 3 commits matching the original auto-detected split (NOT 1 commit from the discarded custom group)",
@@ -229,7 +229,7 @@
         "Exactly 1 new commit was created",
         "The commit subject uses scope (docs)",
         "The commit contains BOTH docs/README.md AND the root-level README.md (cross-rule merge)",
-        "No AskUserQuestion split-proposal was shown (single resolved-scope group)",
+        "No user-input split-proposal was shown (single resolved-scope group)",
         "git push ran exactly once (or was logged)"
       ]
     },
@@ -294,13 +294,13 @@
     {
       "id": 22,
       "prompt": "Setup: in a scratch git repo, modify one file under skills/spring-init/ (single group, no split). Then invoke: /commit-push",
-      "expected_output": "Skill emits a one-line pre-push summary (format: `→ pushing 1 commit to origin/<branch>` or close variant) IMMEDIATELY before invoking `git push`, and does NOT invoke AskUserQuestion specifically to confirm the push. Verifies step 7's summary + no-AskUserQuestion-for-push-permission guarantee.",
+      "expected_output": "Skill emits a one-line pre-push summary (format: `→ pushing 1 commit to origin/<branch>` or close variant) IMMEDIATELY before invoking `git push`, and does NOT request user input specifically to confirm the push. Verifies step 7's summary + no-user-input-for-push-permission guarantee.",
       "files": [],
       "expectations": [
         "Exactly 1 new commit was created with scope (spring-init)",
         "git push ran exactly once",
         "Before running git push, the skill emitted a one-line summary naming the branch and the number of commits being pushed (e.g., `→ pushing 1 commit to origin/<branch>`)",
-        "No AskUserQuestion call was made between the pre-push summary line and the `git push` Bash call. Unrelated AskUserQuestion uses from earlier workflow steps (e.g., split proposal, custom-groupings picker) are out of scope — the assertion is strictly positional.",
+        "No user-input request was made between the pre-push summary line and the `git push` Bash call. Unrelated user-input requests from earlier workflow steps (e.g., split proposal, custom-groupings picker) are out of scope — the assertion is strictly positional.",
         "Reported output includes the commit SHA"
       ]
     },
@@ -329,7 +329,7 @@
         "Pre-invocation `git status` shows a clean working tree AND a 'Your branch is ahead of origin/<branch> by N commit(s)' line",
         "The skill did NOT create any new commits during the invocation (HEAD SHA after the run == HEAD SHA before the run)",
         "The skill did NOT run `git add`, `git commit`, or any staging/commit Bash call",
-        "The skill did NOT invoke AskUserQuestion at any point (no split proposal, no picker — step 1a bypasses those steps)",
+        "The skill did NOT request user input at any point (no split proposal, no picker — step 1a bypasses those steps)",
         "The skill emitted a pre-push summary line (`→ pushing N commit(s) to origin/<branch>`) before running `git push`",
         "`git push` ran exactly once and succeeded",
         "Post-invocation `git status` reports the branch is up-to-date with origin",
@@ -346,7 +346,7 @@
         "The skill did NOT exit silently with 'nothing to do' — it proceeded to step 7",
         "The skill did NOT create any new commits (HEAD SHA after == HEAD SHA before)",
         "The skill did NOT run `git add`, `git commit`, or any staging/commit Bash call",
-        "The skill did NOT invoke AskUserQuestion (step 1a bypasses the picker and split proposal)",
+        "The skill did NOT request user input (step 1a bypasses the picker and split proposal)",
         "The skill emitted a pre-push summary line before running the push command",
         "The push command used `git push -u origin HEAD` (NOT bare `git push`, which would fail with `no upstream branch` on a fresh branch)",
         "Post-invocation: the branch exists on origin and tracks `origin/<branch>`",
@@ -380,7 +380,7 @@
         "The skill did NOT run `git push` (no `git push` Bash call, no `git push -u origin HEAD`, no bare `git push`)",
         "The skill did NOT create any new commits (HEAD SHA after == HEAD SHA before)",
         "The skill did NOT run `git add`, `git commit`, or any staging/commit Bash call",
-        "The skill did NOT invoke AskUserQuestion at any point",
+        "The skill did NOT request user input at any point",
         "Post-invocation: the branch does NOT exist on origin (`git ls-remote origin refs/heads/feature/empty` returns nothing, OR if a prior unrelated origin ref already existed there, its SHA is unchanged)",
         "The skill's reply explicitly explains that there are no commits unique to origin / nothing to publish — not a generic 'nothing to do' message, and not a claim that a push succeeded"
       ]
