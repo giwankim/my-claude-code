@@ -1,6 +1,7 @@
 ---
 name: spring-init
-version: 0.4.0
+metadata:
+  version: "0.4.0"
 description: >-
   Initialize a new Spring Boot project using Spring Initializr via the spring CLI.
   Use when the user says "new spring project", "spring init", "create spring boot app",
@@ -158,8 +159,43 @@ missing `curl` binary, or a transient issue where the CLI may still work):
 
 ## Interactive Configuration
 
-Walk the user through project setup using `AskUserQuestion` at each step.
+Walk the user through project setup using the **User input** guidance below.
 Show defaults clearly so the user can accept them quickly.
+
+### User input (Claude Code and Codex)
+
+Apply this guidance to every question in the skill, including fallback version
+entry, corrected values, existing-project replacement, and final confirmation:
+
+- **Claude Code:** use `AskUserQuestion` when available.
+- **Codex:** prefer `request_user_input_async` when available and permitted for
+  the question. Otherwise use `request_user_input` only when the current mode and
+  tool instructions allow that kind of question. Do not switch modes just to
+  access a question tool.
+- **Fallback:** if no suitable input tool is available, ask the same question in
+  a normal chat response and end the turn to wait for the user's reply.
+
+Follow the selected tool's actual schema; these tools do not accept
+interchangeable payloads. Shorten option labels when required without changing
+their meaning. If a menu exceeds the tool's option limit, put the full numbered
+menu in the question text and use its free-text response for the selection,
+with a small set of valid suggestions if the schema requires options. Preserve
+all choices rather than truncating the menu. If free-text entry is unsupported,
+use the chat fallback.
+
+Accept custom version strings, `group=com.example, artifact=myapp, java=17`,
+dependency IDs, and comma-separated numbers/ranges where the step allows them.
+Numbered answers map to the displayed choices; an edit choice such as "Change
+group" requires collecting the new value before proceeding. Dependency selection
+must also work through text when the host has no multi-select widget.
+
+Wait for an actual answer before dependent work, especially deleting an existing
+project, generating files, or editing root build settings. An asynchronous tool
+returning, a preselected option, silence, or an unanswered prompt is not acceptance
+of defaults or confirmation. While asynchronous input is pending, only independent
+read-only work may continue; otherwise yield the turn with the question pending.
+Keep generation and replacement decisions separate from the host's command
+execution permissions; conversational answers do not grant sandbox access.
 
 ### Step 1 — Quick start or customize?
 
@@ -172,7 +208,7 @@ must show:
 - Packaging: `JAR` (opinionated preference)
 - Config: `YAML` (opinionated preference)
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Spring Boot project setup.
@@ -197,7 +233,7 @@ as `*(recommended)*`. Only include combinations where the language is idiomatic
 for the build tool (e.g. Groovy language pairs with Gradle-Groovy, not
 Gradle-Kotlin). Always derive from the live API — do not assume a fixed set.
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Select build tool and language:
@@ -218,7 +254,7 @@ Map the selection to CLI flags:
 List versions from `BOOT_VERSIONS`, sorted: stable first, then milestones/RCs,
 then snapshots. Annotate the latest stable and latest 3.x stable (if present).
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Select Spring Boot version:
@@ -248,7 +284,7 @@ Use `{JAVA_HIGHEST}` from the API as the Java version default. Show all
 available Java versions from `JAVA_VERSIONS` in the "Change Java version"
 option.
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Project coordinates:
@@ -284,7 +320,7 @@ If invalid, re-prompt the user for a corrected artifact name.
 After the artifact name is determined, check if `./<artifact>` already exists and
 contains `build.gradle.kts`, `build.gradle`, `pom.xml`, or a `src/` directory.
 
-If existing project files are found, ask via `AskUserQuestion`:
+If existing project files are found, ask using the **User input** guidance:
 
 ```text
 Existing project files detected in ./<artifact>:
@@ -310,8 +346,8 @@ Then check the current directory for an existing Gradle root by looking for
 `settings.gradle.kts` or `settings.gradle` in `.` (the working directory, not
 `./<artifact>`).
 
-**If the generated project uses Gradle AND a Gradle root is detected**, ask via
-`AskUserQuestion`:
+**If the generated project uses Gradle AND a Gradle root is detected**, ask using
+the **User input** guidance:
 
 ```text
 Existing Gradle root project detected (<settings-file>).
@@ -338,7 +374,7 @@ Options: "Standalone project in ./<artifact>", "Subproject of root"
 Skip this step on the defaults path — YAML is already the default from Step 1.
 Only ask this when the user chose "Customize settings" in Step 1.
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Application config format:
@@ -366,7 +402,7 @@ with the selected Boot version (check each dependency's `versionRange`).
 Number groups sequentially and format in columns (3 columns, left-padded
 numbers) to keep the prompt compact.
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Select dependency groups to browse (or type dependency IDs directly, e.g. web,data-jpa):
@@ -434,7 +470,7 @@ If the heuristic produces confusing groupings, fall back to
 Show the full configuration summary using the actual values collected from all
 prior steps, and the exact `spring init` command.
 
-Ask via `AskUserQuestion`:
+Ask using the **User input** guidance:
 
 ```text
 Ready to generate project:
