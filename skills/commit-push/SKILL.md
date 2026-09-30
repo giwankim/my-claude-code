@@ -6,6 +6,10 @@ description: Commit staged/unstaged changes and push to origin with an Angular-s
 
 # Commit and Push
 
+## Commit attribution
+
+Never include a `Co-authored-by:` line in any commit message created by this skill. This applies to single commits, every split commit, retries, and hook-reconciliation commits. Omit these lines even when recent commits, templates, or tool defaults include them. Before each `git commit`, inspect the complete message and remove any `Co-authored-by:` lines (case-insensitive).
+
 ## User input (Claude Code and Codex)
 
 Whenever this workflow asks the user to select files, choose a split, adjust groups, or resolve out-of-scope hook changes, use the input mechanism available in the current host:
@@ -176,7 +180,7 @@ Per-push explicit approval still works — but environments with `skipAutoPermis
       - **Types:** `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `style`, `build`, `ci`, `chore`.
       - **Subject:** lowercase, imperative, no trailing period.
       - **Body:** each bullet starts with `"- "`, describing a concrete change.
-      - Match the style of recent commits in the repo.
+      - Match the style of recent commits in the repo, while following the **Commit attribution** rule above.
       - Always pass the message via a HEREDOC.
    3. Run `git commit` (create a NEW commit, never `--amend`).
    4. **If a pre-commit hook fails** for this iteration, attempt a bounded recovery:
