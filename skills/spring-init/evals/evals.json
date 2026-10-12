@@ -60,7 +60,7 @@
       "expectations": [
         "application.yaml exists in billing/src/main/resources/",
         "application.properties does NOT exist in billing/src/main/resources/",
-        "YAML conversion happened BEFORE subproject cleanup (step 2 before step 3)",
+        "YAML conversion happened BEFORE subproject cleanup (step 2 before step 4)",
         "billing/gradlew does NOT exist (removed during subproject cleanup)",
         "billing/settings.gradle.kts does NOT exist (removed during subproject cleanup)",
         "Root settings.gradle.kts contains include(\"billing\")",
@@ -90,6 +90,61 @@
         "The legacyver/ directory was actually created",
         "legacyver/build.gradle.kts pins org.springframework.boot version 4.1.0",
         "The skill did not pass the user's literal 4.1.0.RELEASE string to -b"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "create a new spring boot project called inventory with the web dependency, defaults for everything else",
+      "expected_output": "A Gradle-Kotlin/Kotlin project with ktlint-gradle, kotlin-logging and springmockk at their newest stable versions, the bundled .editorconfig, and sources that already pass ktlintCheck",
+      "files": [],
+      "expectations": [
+        "inventory/build.gradle.kts applies plugin org.jlleitschuh.gradle.ktlint at the newest stable Gradle Plugin Portal version",
+        "inventory/build.gradle.kts declares implementation io.github.oshai:kotlin-logging-jvm at the newest stable Maven Central version",
+        "inventory/build.gradle.kts declares testImplementation com.ninja-squad:springmockk at the newest stable 5.x version (Boot 4 line)",
+        "inventory/.editorconfig is byte-identical to the skill's assets/editorconfig",
+        "./gradlew ktlintCheck exits 0 in inventory/",
+        "No tab characters remain in inventory/src/**/*.kt or inventory/build.gradle.kts",
+        "application.yaml exists and application.properties does not in inventory/src/main/resources/"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "new spring boot project, customize settings: maven with kotlin, latest boot, web dependency, yaml config, name it ledger. keep the other defaults",
+      "expected_output": "A Maven/Kotlin project with kotlin-logging and springmockk in pom.xml, the bundled .editorconfig, no ktlint, and an explanation that ktlint-gradle is Gradle-only",
+      "files": [],
+      "expectations": [
+        "ledger/pom.xml declares io.github.oshai:kotlin-logging-jvm at the newest stable version without a test scope",
+        "ledger/pom.xml declares com.ninja-squad:springmockk at the newest stable 5.x version with <scope>test</scope>",
+        "ledger/pom.xml contains no ktlint plugin",
+        "ledger/.editorconfig is byte-identical to the skill's assets/editorconfig",
+        "The user was told ktlint-gradle was skipped because it only applies to Gradle builds",
+        "The Kotlin defaults question (Step 4e) was asked on the customize path"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "spring init a kotlin project named notifier with the web dependency, defaults otherwise. leave out springmockk though, we stick with plain mockito",
+      "expected_output": "Gradle-Kotlin project with ktlint, kotlin-logging and .editorconfig but no springmockk",
+      "files": [],
+      "expectations": [
+        "notifier/build.gradle.kts does NOT mention springmockk",
+        "notifier/build.gradle.kts applies org.jlleitschuh.gradle.ktlint and declares io.github.oshai:kotlin-logging-jvm",
+        "notifier/.editorconfig is byte-identical to the skill's assets/editorconfig",
+        "./gradlew ktlintCheck exits 0 in notifier/"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "I have an existing Gradle root project here (settings.gradle.kts exists in cwd). Create a new spring boot subproject called payments with web dependency, use defaults for everything else.",
+      "expected_output": "A formatted Kotlin subproject registered in the root, with the .editorconfig at the Gradle root and no Gradle leftovers in the module",
+      "files": ["evals/files/settings.gradle.kts"],
+      "expectations": [
+        "payments/build.gradle.kts applies org.jlleitschuh.gradle.ktlint and declares kotlin-logging-jvm and springmockk",
+        "./.editorconfig at the Gradle root is byte-identical to the skill's assets/editorconfig",
+        "payments/.editorconfig does NOT exist",
+        "payments/ contains no gradlew, .gradle/ or build/",
+        "No tab characters remain in payments/src/**/*.kt (formatting ran before cleanup)",
+        "Root settings.gradle.kts contains include(\"payments\")"
       ]
     }
   ]

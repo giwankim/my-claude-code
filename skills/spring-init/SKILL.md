@@ -1,9 +1,11 @@
 ---
 name: spring-init
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
 description: >-
   Initialize a new Spring Boot project using Spring Initializr via the spring CLI.
+  Kotlin projects also get ktlint-gradle, kotlin-logging, springmockk (latest
+  versions), and an .editorconfig by default.
   Use when the user says "new spring project", "spring init", "create spring boot app",
   "/spring-init", or wants to scaffold a new Spring Boot application. Also trigger when
   the user mentions Spring Boot setup, project scaffolding with Spring, or bootstrapping
@@ -207,6 +209,8 @@ must show:
 - Java: `{JAVA_HIGHEST}` (from API)
 - Packaging: `JAR` (opinionated preference)
 - Config: `YAML` (opinionated preference)
+- Kotlin defaults: ktlint-gradle, kotlin-logging, springmockk, `.editorconfig`
+  (opinionated preference; see `references/kotlin-defaults.md`)
 
 Ask using the **User input** guidance:
 
@@ -214,6 +218,7 @@ Ask using the **User input** guidance:
 Spring Boot project setup.
 
 Defaults: Gradle-Kotlin | Kotlin | Boot {LATEST_STABLE_BOOT.display} | Java {JAVA_HIGHEST} | JAR | YAML config
+Kotlin defaults: ktlint-gradle, kotlin-logging, springmockk (latest), .editorconfig
 
 Accept all defaults or customize?
 ```
@@ -390,6 +395,34 @@ Options: "YAML (default)", "Properties"
   and write `application.yaml`, then remove the original `.properties` file (see Post-Generation).
 - **Properties** → keep the generated file as-is.
 
+### Step 4e — Kotlin defaults (customize path, Kotlin only)
+
+Kotlin projects get four defaults: ktlint-gradle (Gradle builds only),
+kotlin-logging, springmockk, and an `.editorconfig`. Java and Groovy projects
+get none of them, so skip this step for those.
+
+On the defaults path, skip this step and keep all four. If the user's request
+already rules one out ("no ktlint", "skip springmockk"), honor it on either
+path without asking again.
+
+On the customize path, ask using the **User input** guidance:
+
+```text
+Kotlin defaults (latest stable versions, resolved before generating):
+
+  ktlint-gradle · kotlin-logging · springmockk · .editorconfig
+
+Keep all, choose which to keep, or none?
+```
+
+Options: "Keep all (default)", "Choose which to keep", "None"
+
+- **Choose which to keep** → ask a follow-up listing the four defaults,
+  multi-select where the host supports it, otherwise comma-separated numbers.
+
+For a Maven build, leave ktlint-gradle off the list. It is a Gradle plugin,
+and the Step 7 summary says why it is missing.
+
 ### Step 5 — Dependency groups
 
 Build the dependency group list dynamically from `DEP_GROUPS` (the API's
@@ -467,6 +500,18 @@ If the heuristic produces confusing groupings, fall back to
 
 ### Step 7 — Confirmation
 
+For a Kotlin project with any Kotlin defaults enabled, resolve their versions
+first. The Boot version is final now, and springmockk's compatible line
+depends on it:
+
+```bash
+python3 <skill-dir>/scripts/resolve_kotlin_extras.py <bootVersion-id>
+```
+
+`<skill-dir>` is the directory containing this SKILL.md. Show the resolved versions in the summary, so the user approves the exact
+versions that go into the build. See `references/kotlin-defaults.md` (section
+2) for reading the output and handling a failed lookup.
+
 Show the full configuration summary using the actual values collected from all
 prior steps, and the exact `spring init` command.
 
@@ -485,6 +530,7 @@ Ready to generate project:
   Layout:       {Standalone | Subproject of root}
   Config:       {YAML (application.yaml) | Properties}
   Dependencies: {comma-separated dep IDs, or "none"}
+  Kotlin:       {ktlint-gradle X, kotlin-logging-jvm Y, springmockk Z, .editorconfig | none}
   Target:       ./{selected_artifact}
 
 Command:
@@ -492,8 +538,15 @@ Command:
     -b {bootVersion_id} -g {groupId} -a {artifactId} -n {artifactId} \
     -j {javaVersion} -p {packaging} -d {deps} {artifactId}
 
+Then: add the Kotlin defaults, then run ./gradlew ktlintFormat   ← Kotlin only
+
 Proceed?
 ```
+
+Omit the `Kotlin:` line and the `Then:` line for Java and Groovy projects. For
+Maven, drop ktlint-gradle from the `Kotlin:` line and add "(ktlint-gradle
+skipped: Gradle only)". Drop the `ktlintFormat` part from the `Then:` line as
+well.
 
 Options: "Generate project", "Go back and change settings", "Cancel"
 
@@ -581,14 +634,32 @@ After executing the `spring init` command:
    - Do the same for `./<artifact>/src/test/resources/application.properties` if it exists.
    If the user explicitly chose Properties in Step 4d, skip this step.
 
-3. **If subproject layout was chosen** (Gradle only), clean up and register the module:
+3. **Apply the Kotlin defaults** (Kotlin language only; skip for Java and
+   Groovy). Follow `references/kotlin-defaults.md` for snippets and placement.
+   The order matters:
+   1. Copy `assets/editorconfig` to `.editorconfig` (standalone: inside
+      `./<artifact>`; subproject: the Gradle root, unless one already exists).
+   2. Add the enabled plugin and dependencies to the build file, using the
+      versions shown in Step 7.
+   3. Gradle with ktlint enabled: run `./gradlew ktlintFormat`, then
+      `./gradlew ktlintCheck`, from inside `./<artifact>`.
+
+   The `.editorconfig` must exist before ktlint runs, because it sets the
+   code style ktlint formats to. Formatting is needed at all because
+   Initializr's sources use tabs, which fail `ktlintCheck`. That would break the
+   user's first `./gradlew build`. Run all of this before the subproject
+   cleanup, while the module still has its own Gradle wrapper.
+
+4. **If subproject layout was chosen** (Gradle only), clean up and register the module:
    - Remove from `./<artifact>`: `gradlew`, `gradlew.bat`, `gradle/` directory,
      `settings.gradle.kts` (or `settings.gradle`), `HELP.md`, `.gitignore`, and
-     `.gitattributes`.
+     `.gitattributes`. Also remove `.gradle/` and `build/` if the ktlint run
+     created them. The module's `.gitignore` covered them, and it is being
+     removed.
    - Append `include("<artifact>")` to the root `settings.gradle.kts` (or
      `settings.gradle`), unless it already contains that include.
-4. List the generated project structure: `find <target> -type f | head -30`.
-5. **Verify project integrity:**
+5. List the generated project structure: `find <target> -type f | head -30`.
+6. **Verify project integrity:**
    - Confirm the build file pins the Boot version the user actually chose:
      `grep -n 'org.springframework.boot' <artifact>/build.gradle.kts` (or the
      `<parent>` block in `pom.xml`). It should match the `-b` value exactly.
@@ -607,10 +678,18 @@ After executing the `spring init` command:
      exist. Also check `<artifact>/src/test/resources/` — if `application.properties`
      exists there, convert it now. If any conversion was missed, do it before
      reporting success.
-6. Report success with a summary of what was created.
-7. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
+   - Kotlin projects: run the checks in `references/kotlin-defaults.md`
+     section 7. The coordinates must be at the Step 7 versions, the
+     `.editorconfig` must match the asset byte-for-byte, and `ktlintCheck`
+     must have passed. If it did not pass, the user must be told to run
+     `./gradlew ktlintFormat`.
+7. Report success with a summary of what was created, including the Kotlin
+   defaults and their versions.
+8. Suggest next steps: `cd <artifact> && ./gradlew bootRun` (Gradle) or
    `cd <artifact> && ./mvnw spring-boot:run` (Maven). For subproject layout,
    suggest running from the root instead (e.g. `./gradlew :<artifact>:bootRun`).
+   For Kotlin Gradle projects, mention `./gradlew ktlintFormat` for formatting
+   new code. `./gradlew build` runs `ktlintCheck`.
 
 ## Edge Cases
 
@@ -633,3 +712,9 @@ After executing the `spring init` command:
   legacy `application/json` metadata or from a user typing a remembered version.
   Fetch metadata with the `v2.2` Accept header and normalize any hand-entered
   version, so the suffix never reaches the command in the first place.
+- **Kotlin default version lookup fails**: Leave that one default out and tell
+  the user. Do not substitute a remembered version: one that was never
+  published breaks dependency resolution.
+- **ktlint run fails** (no network, Gradle can't start): Keep the generated
+  project and the other defaults. Show the output, and tell the user to run
+  `./gradlew ktlintFormat` before their first `./gradlew build`.
